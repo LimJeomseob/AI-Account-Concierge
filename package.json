@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
-    "import:accounts": "tsx scripts/import-accounts.ts"
+    "import:accounts": "tsx scripts/import-accounts.ts",
+    "test:acceptance": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

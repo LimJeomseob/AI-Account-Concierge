@@ -79,10 +79,15 @@ GitHub Pages 장애 시 대체용으로 같은 기능의 `/apply` 페이지를 �
 ## 검증
 
 ```bash
-npm test           # 도메인 로직 단위 테스트 (Vitest)
-npm run build      # 타입체크 + 프로덕션 빌드
+npm test              # 도메인 로직 단위 테스트 (Vitest)
+npm run build         # 타입체크 + 프로덕션 빌드
+
+# 수용 기준 T1~T13 (PRD §16) — 실제 Supabase 연결 필요, 시범/스테이징에서만
+ACCEPTANCE_CONFIRM=yes npm run test:acceptance
 ```
 
 `supabase/migrations/0001_init.sql` 은 PostgreSQL 16 에서 적용·재적용(멱등)과
 제약(중복 신청 차단, `current_assignment_id` 상태 제약) 동작을 확인했다.
-PRD §16 의 시나리오 T1~T13 은 실제 Supabase·Resend 연결이 필요하므로 배포 후 수행한다.
+PRD §16 의 시나리오 T1~T13 은 `lib/__tests__/acceptance.integration.test.ts` 로 자동화돼 있으며,
+실제 Supabase 연결이 있을 때만 실행된다(테스트 데이터는 `ZTEST` 접두, 종료 시 삭제, 메일 발송 차단).
+배포 절차 전체는 [`docs/배포체크리스트.md`](docs/배포체크리스트.md) 를 따른다.

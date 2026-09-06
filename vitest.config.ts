@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['lib/__tests__/**/*.test.ts'],
+    // 실제 Supabase 연결이 필요한 수용 기준 스위트는 별도 설정으로 실행 (npm run test:acceptance)
+    exclude: ['lib/__tests__/**/*.integration.test.ts'],
   },
   resolve: {
     alias: {
