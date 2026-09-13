@@ -1,0 +1,17 @@
+# Google OAuth 활성화 오버라이드 (PRD §3 관리자 인증 = Google 로그인)
+# 공식 compose 에서는 이 항목이 주석 처리돼 있어, 따로 덧씌운다.
+#
+#   cd supabase-project
+#   docker compose -f docker-compose.yml -f google-oauth.override.yml up -d auth
+#
+# 값은 supabase-project/.env 의 GOOGLE_ENABLED / GOOGLE_CLIENT_ID / GOOGLE_SECRET 을 읽는다.
+# Google Cloud Console 에 등록할 리디렉션 URI = ${API_EXTERNAL_URL}/callback
+#   로컬: http://localhost:8000/auth/v1/callback
+#   서버: https://api.<도메인>/auth/v1/callback
+services:
+  auth:
+    environment:
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOOGLE_ENABLED:-true}
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_SECRET}
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${API_EXTERNAL_URL}/callback

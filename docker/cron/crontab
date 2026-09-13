@@ -1,0 +1,4 @@
+# 분 시 일 월 요일   (TZ=Asia/Seoul)
+# PRD §11: 일일 작업 09:00, 월간 스냅샷 매월 1일 (겹치지 않게 09:05)
+0 9 * * *   curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/daily   >> /proc/1/fd/1 2>&1
+5 9 1 * *   curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/monthly >> /proc/1/fd/1 2>&1

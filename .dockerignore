@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage
+docs
+supabase-project
+docker/.env
+docker/caddy_data
+docker/backups
+README.md
+CLAUDE.md

@@ -1,0 +1,13 @@
+# 대학 서버용 HTTPS 리버스 프록시 (profile: server)
+# DOMAIN 환경변수 예: gnu-ai.kr  →  app.gnu-ai.kr / api.gnu-ai.kr
+# 인증서는 Let's Encrypt 에서 자동 발급된다 (80·443 포트가 외부에서 열려 있어야 함).
+
+app.{$DOMAIN} {
+    reverse_proxy app:3000
+    encode gzip
+}
+
+# Supabase 게이트웨이(Kong). 브라우저 Google 로그인이 이 주소로 직접 접근한다.
+api.{$DOMAIN} {
+    reverse_proxy kong:8000
+}

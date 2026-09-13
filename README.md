@@ -65,6 +65,20 @@ Supabase 대시보드에서 Google Provider 를 켜고, 리디렉션 URL 에
 GitHub Pages 오리진을 등록해야 요청이 통과한다.
 GitHub Pages 장애 시 대체용으로 같은 기능의 `/apply` 페이지를 제공한다.
 
+## Docker 배포 (Vercel 대안)
+
+Vercel Hobby 의 비상업 조건을 쓸 수 없을 때는 대학 서버 Docker 로 띄운다.
+Supabase 까지 셀프호스팅하며, 로컬 시험 → 서버 운영 순서로
+[`docs/Docker배포가이드.md`](docs/Docker배포가이드.md) 를 따른다.
+
+```bash
+sh docker/supabase/setup.sh local        # Supabase 공식 스택을 ../supabase-project 에 준비
+(cd ../supabase-project && sh run.sh start)
+sh docker/supabase/apply-migration.sh    # 스키마 적용
+cp docker/.env.docker.example docker/.env  # 키·비밀 값 입력
+(cd docker && docker compose up -d --build)   # 앱 + 배치 스케줄러 (서버는 --profile server 로 Caddy HTTPS 추가)
+```
+
 ## 배치
 
 `vercel.json` 이 다음 두 작업을 등록한다 (UTC 00:00 = KST 09:00).

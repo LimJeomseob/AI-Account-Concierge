@@ -28,8 +28,14 @@ lib/
 supabase/migrations/0001_init.sql
 scripts/seed.ts, scripts/import-accounts.ts
 public/signup-snippet.html                        ← GitHub Pages 삽입용
-docs/PRD.md, docs/운영매뉴얼.md
+Dockerfile, .dockerignore                         ← Next.js standalone 이미지
+docker/docker-compose.yml, docker/Caddyfile, docker/cron/, docker/backup.sh
+docker/supabase/(setup.sh apply-migration.sh google-oauth.override.yml)  ← 공식 셀프호스팅 스택 준비
+docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker배포가이드.md
 ```
+
+- 배포 경로는 둘: Vercel + Supabase 클라우드(`docs/배포체크리스트.md`) / 대학 서버 Docker + Supabase 셀프호스팅(`docs/Docker배포가이드.md`).
+  앱 코드는 두 경로에서 동일하며 환경변수 값만 다르다. `SUPABASE_URL`(서버 내부망) 과 `NEXT_PUBLIC_SUPABASE_URL`(브라우저) 을 분리해 둔 이유다.
 
 ## 규칙 ↔ 구현 대응
 
