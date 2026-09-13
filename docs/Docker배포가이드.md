@@ -65,6 +65,16 @@ docker --version          # Docker version 2x.x.x 처럼 나오면 됨
 docker compose version    # Docker Compose version v2.x.x
 ```
 
+> **Windows 사용자는 반드시 읽으세요.**
+> 이 문서의 `sh ...` 명령과 Supabase 공식 스택의 `run.sh` 는 리눅스/맥 셸 스크립트입니다.
+> **PowerShell 이나 CMD 에서는 실행되지 않습니다** (`'sh' 용어가 ... 인식되지 않습니다` 오류).
+> [Git for Windows](https://git-scm.com/download/win) 를 설치하고 **Git Bash** 창을 열어 거기서 실행하세요.
+> Git Bash 에는 `sh`·`openssl`·`sed` 가 모두 들어 있습니다.
+>
+> - Git Bash 에서 경로는 `C:\Users\user\작업폴더` → `/c/Users/user/작업폴더` 로 씁니다.
+> - `docker ...` 명령은 PowerShell·Git Bash 어디서든 됩니다. `sh ...` 만 Git Bash 에서.
+> - 이 문서 전체를 **Git Bash 창 하나로** 진행하는 것이 가장 간단합니다.
+
 ### A-2. 저장소 받기
 
 ```bash
@@ -361,6 +371,8 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 
 | 증상 | 원인·조치 |
 |---|---|
+| Windows: `'sh' 용어가 cmdlet, 함수, ... 인식되지 않습니다` | PowerShell/CMD 에서 실행함. **Git Bash** 창을 열어 같은 명령을 실행 (A-1 참고) |
+| Git Bash: `sh: docker: command not found` | Docker Desktop 이 꺼져 있거나 PATH 미등록. Docker Desktop 을 실행한 뒤 Git Bash 를 새로 연다 |
 | Google 로그인 시 `redirect_uri_mismatch` | Google Console 의 리디렉션 URI 와 GoTrue 가 보낸 값이 다름. `https://api.<도메인>/auth/v1/callback` 을 **정확히**(http/https, 끝 슬래시 없음) 등록했는지, `supabase-project/.env` 의 `API_EXTERNAL_URL` 이 `https://api.<도메인>/auth/v1` 인지 확인 |
 | 로그인 후 `/admin/denied` | 그 Gmail 이 `admins` 테이블에 없음. Studio → Table Editor → admins 에 추가하거나, 기존 관리자가 설정 화면에서 추가 |
 | `api/health` 가 `"db":"down"` | `docker/.env` 의 `SUPABASE_SERVICE_ROLE_KEY` 오타, 또는 앱이 Supabase 네트워크에 못 붙음 → `docker network ls` 에 `supabase-project_default` 가 있는지 확인 |
