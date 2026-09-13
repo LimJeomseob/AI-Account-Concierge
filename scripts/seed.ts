@@ -14,7 +14,7 @@ loadEnv({ path: '.env.local' })
 loadEnv()
 import { createClient } from '@supabase/supabase-js'
 import { createCipheriv, randomBytes } from 'node:crypto'
-import { DEFAULT_SETTINGS } from '../lib/settings'
+import { DEFAULT_SETTINGS } from '../lib/settings-defaults'
 import { DEFAULT_TEMPLATES } from '../lib/mail/templates'
 import { PROGRAM_SEED } from '../lib/seed-data'
 
