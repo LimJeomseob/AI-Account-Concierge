@@ -3,7 +3,10 @@
  * 사용법: npx tsx scripts/import-accounts.ts accounts.csv
  * 헤더: 계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA
  */
-import 'dotenv/config'
+// .env.local 을 우선 읽고, 없는 값은 .env 로 보충한다 (Next.js 규칙과 맞춤)
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
+loadEnv()
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { createCipheriv, randomBytes } from 'node:crypto'

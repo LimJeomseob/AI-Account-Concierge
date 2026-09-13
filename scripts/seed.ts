@@ -8,7 +8,10 @@
  *
  * 사용법: npx tsx scripts/seed.ts [--programs] [--sample-accounts]
  */
-import 'dotenv/config'
+// .env.local 을 우선 읽고, 없는 값은 .env 로 보충한다 (Next.js 규칙과 맞춤)
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
+loadEnv()
 import { createClient } from '@supabase/supabase-js'
 import { createCipheriv, randomBytes } from 'node:crypto'
 import { DEFAULT_SETTINGS } from '../lib/settings'
