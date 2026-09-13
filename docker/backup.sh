@@ -8,7 +8,10 @@ OUT="$ROOT/docker/backups"
 mkdir -p "$OUT"
 FILE="$OUT/$(date +%Y-%m-%d).sql.gz"
 
-docker compose --project-directory "$PROJECT" exec -T db \
+[ -f "$PROJECT/docker-compose.yml" ] || { echo "supabase-project 가 없습니다: $PROJECT"; exit 1; }
+
+# -f 로 Supabase 스택의 compose 파일을 명시 (현재 폴더의 compose 파일을 읽지 않도록)
+docker compose -f "$PROJECT/docker-compose.yml" --project-directory "$PROJECT" exec -T db \
   pg_dump -U postgres -d postgres --no-owner --schema=public | gzip > "$FILE"
 
 find "$OUT" -name '*.sql.gz' -mtime +30 -delete
