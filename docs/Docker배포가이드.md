@@ -375,7 +375,8 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 | Git Bash: `sh: docker: command not found` | Docker Desktop 이 꺼져 있거나 PATH 미등록. Docker Desktop 을 실행한 뒤 Git Bash 를 새로 연다 |
 | Google 로그인 시 `redirect_uri_mismatch` | Google Console 의 리디렉션 URI 와 GoTrue 가 보낸 값이 다름. `https://api.<도메인>/auth/v1/callback` 을 **정확히**(http/https, 끝 슬래시 없음) 등록했는지, `supabase-project/.env` 의 `API_EXTERNAL_URL` 이 `https://api.<도메인>/auth/v1` 인지 확인 |
 | 로그인 후 `/admin/denied` | 그 Gmail 이 `admins` 테이블에 없음. Studio → Table Editor → admins 에 추가하거나, 기존 관리자가 설정 화면에서 추가 |
-| `api/health` 가 `"db":"down"` | `docker/.env` 의 `SUPABASE_SERVICE_ROLE_KEY` 오타, 또는 앱이 Supabase 네트워크에 못 붙음 → `docker network ls` 에 `supabase-project_default` 가 있는지 확인 |
+| `api/health` 가 `"db":"down"` | `docker/.env` 의 `SUPABASE_SERVICE_ROLE_KEY` 오타, 또는 앱이 Supabase 네트워크에 못 붙음 → `docker network ls` 에 `supabase_default` 가 있는지 확인 |
+| `network supabase_default declared as external, but could not be found` | Supabase 스택이 안 떠 있거나 네트워크 이름이 다름. `docker network ls` 로 실제 이름을 확인해 `docker/.env` 의 `SUPABASE_NETWORK` 에 넣는다 |
 | Caddy 가 인증서를 못 받음 | 80 포트가 외부에서 막혀 있거나 DNS 가 아직 전파 안 됨. `docker compose logs caddy` 에 `acme` 오류 확인. DNS 는 최대 수 시간 걸림 |
 | 컨테이너가 `unhealthy` | `docker compose logs <이름>` 으로 원인 확인. Supabase 쪽은 첫 기동 시 2~3분 걸릴 수 있음 |
 | 포트 충돌 (`address already in use`) | 다른 프로그램이 3000/8000/80/443 사용 중. `sudo lsof -i :3000` 으로 찾아 종료하거나 `docker/.env` 의 `APP_PORT` 변경 |

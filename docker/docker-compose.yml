@@ -2,7 +2,7 @@
 #
 # 전제: Supabase 셀프호스팅 스택이 ../supabase-project 에서 먼저 떠 있어야 한다.
 #       (docs/Docker배포가이드.md PART A-3 / B-2)
-#       이 스택은 그 네트워크(supabase-project_default)에 붙어 kong:8000 으로 DB·Auth 에 접근한다.
+#       이 스택은 그 네트워크(supabase_default)에 붙어 kong:8000 으로 DB·Auth 에 접근한다.
 #
 # 로컬:   docker compose --env-file .env up -d --build
 # 서버:   docker compose --env-file .env --profile server up -d --build   (Caddy HTTPS 포함)
@@ -74,7 +74,7 @@ networks:
   default:
   supabase:
     external: true
-    name: ${SUPABASE_NETWORK:-supabase-project_default}
+    name: ${SUPABASE_NETWORK:-supabase_default}
 
 volumes:
   caddy_data:
