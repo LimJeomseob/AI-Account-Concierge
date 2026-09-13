@@ -7,11 +7,13 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { db } from '@/lib/db'
+import { AUTH_COOKIE_NAME, serverSupabaseUrl } from '@/lib/auth-cookie'
 
 export function authEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  // 서버에서는 내부망 주소로 Supabase 에 접근한다 (Docker: http://kong:8000).
+  const url = serverSupabaseUrl()
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key) throw new Error('NEXT_PUBLIC_SUPABASE_URL / ANON_KEY 환경변수가 없습니다.')
+  if (!key) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY 환경변수가 없습니다.')
   return { url, key }
 }
 
@@ -20,6 +22,8 @@ export async function authClient() {
   const { url, key } = authEnv()
   const store = await cookies()
   return createServerClient(url, key, {
+    // 브라우저 클라이언트와 쿠키 이름을 맞춘다 (lib/auth-cookie.ts 참고)
+    cookieOptions: { name: AUTH_COOKIE_NAME },
     cookies: {
       getAll: () => store.getAll(),
       setAll: (list) => {

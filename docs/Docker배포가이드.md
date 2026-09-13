@@ -377,6 +377,8 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 |---|---|
 | Windows: `'sh' 용어가 cmdlet, 함수, ... 인식되지 않습니다` | PowerShell/CMD 에서 실행함. **Git Bash** 창을 열어 같은 명령을 실행 (A-1 참고) |
 | Git Bash: `sh: docker: command not found` | Docker Desktop 이 꺼져 있거나 PATH 미등록. Docker Desktop 을 실행한 뒤 Git Bash 를 새로 연다 |
+| 로그인 후 `http://0.0.0.0:3000/...` 로 이동하며 `ERR_ADDRESS_INVALID` | `docker/.env` 의 `NEXT_PUBLIC_APP_URL` 이 비어 있음. `http://localhost:3000` 을 넣고 `docker compose up -d --build` |
+| 로그인 후 `/admin/login?error=...` 로 되돌아옴 | 서버가 Supabase 에 닿지 못한 것. `docker compose logs app \| grep auth.callback` 로 원인 확인. `docker/.env` 의 `SUPABASE_URL=http://kong:8000` 인지 확인 |
 | 로그인 시 `Unsupported provider: provider is not enabled` | Google 오버라이드 미적용. `sh docker/supabase/enable-google.sh` 실행 (Supabase 스택을 재시작했다면 매번 필요) |
 | Google 로그인 시 `redirect_uri_mismatch` | Google Console 의 리디렉션 URI 와 GoTrue 가 보낸 값이 다름. `https://api.<도메인>/auth/v1/callback` 을 **정확히**(http/https, 끝 슬래시 없음) 등록했는지, `supabase-project/.env` 의 `API_EXTERNAL_URL` 이 `https://api.<도메인>/auth/v1` 인지 확인 |
 | 로그인 후 `/admin/denied` | 그 Gmail 이 `admins` 테이블에 없음. Studio → Table Editor → admins 에 추가하거나, 기존 관리자가 설정 화면에서 추가 |
