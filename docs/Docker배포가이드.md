@@ -128,17 +128,21 @@ sh docker/supabase/apply-migration.sh
    GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
    GOOGLE_SECRET=GOCSPX-xxxxxxxx
    ```
-3. Auth 컨테이너만 다시 띄웁니다.
+3. Google 로그인을 켭니다. (긴 compose 명령 대신 스크립트 한 줄)
    ```bash
-   cd ../supabase-project
-   docker compose -f docker-compose.yml -f google-oauth.override.yml up -d auth
+   sh ~/AI-Account-Concierge/docker/supabase/enable-google.sh
    ```
 
-**확인**
-```bash
-docker compose logs auth | grep -i google
+**확인** — 스크립트가 아래 4줄을 출력하면 성공입니다.
 ```
-오류 없이 기동 로그만 보이면 됩니다.
+GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
+GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+GOTRUE_EXTERNAL_GOOGLE_SECRET=GOCSPX-...
+GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=http://localhost:8000/auth/v1/callback
+```
+
+> ⚠ `sh run.sh start` 로 Supabase 스택을 다시 켤 때마다 이 스크립트를 **함께 실행**해야 합니다.
+> 공식 compose 만 읽으면 오버라이드가 빠져 Google 로그인이 다시 꺼집니다.
 
 ### A-6. 앱 환경변수
 
@@ -373,6 +377,7 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 |---|---|
 | Windows: `'sh' 용어가 cmdlet, 함수, ... 인식되지 않습니다` | PowerShell/CMD 에서 실행함. **Git Bash** 창을 열어 같은 명령을 실행 (A-1 참고) |
 | Git Bash: `sh: docker: command not found` | Docker Desktop 이 꺼져 있거나 PATH 미등록. Docker Desktop 을 실행한 뒤 Git Bash 를 새로 연다 |
+| 로그인 시 `Unsupported provider: provider is not enabled` | Google 오버라이드 미적용. `sh docker/supabase/enable-google.sh` 실행 (Supabase 스택을 재시작했다면 매번 필요) |
 | Google 로그인 시 `redirect_uri_mismatch` | Google Console 의 리디렉션 URI 와 GoTrue 가 보낸 값이 다름. `https://api.<도메인>/auth/v1/callback` 을 **정확히**(http/https, 끝 슬래시 없음) 등록했는지, `supabase-project/.env` 의 `API_EXTERNAL_URL` 이 `https://api.<도메인>/auth/v1` 인지 확인 |
 | 로그인 후 `/admin/denied` | 그 Gmail 이 `admins` 테이블에 없음. Studio → Table Editor → admins 에 추가하거나, 기존 관리자가 설정 화면에서 추가 |
 | `api/health` 가 `"db":"down"` | `docker/.env` 의 `SUPABASE_SERVICE_ROLE_KEY` 오타, 또는 앱이 Supabase 네트워크에 못 붙음 → `docker network ls` 에 `supabase_default` 가 있는지 확인 |
