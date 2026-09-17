@@ -9,8 +9,8 @@ import {
   accountGeneratePasswordAction,
   accountImportAction,
   accountSaveAction,
-  accountStatusAction,
 } from '@/app/admin/actions'
+import AccountStatusForm from './AccountStatusForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,33 +71,14 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
       )}
 
       <Card title="상태 변경">
-        <form action={accountStatusAction} className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.account.id}</span>
-            {/* 등록된 계정 중에서 고른다 (오타로 없는 ID 를 넣는 일 방지) */}
-            <select name="id" required defaultValue="" className={inputClass}>
-              <option value="" disabled>
-                계정을 선택하세요
-              </option>
-              {(accounts ?? []).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {`${a.id} · ${a.service} · ${a.kind} · 현재 ${a.status}`}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.account.status}</span>
-            <select name="status" className={inputClass}>
-              <option>가용</option>
-              <option>배정</option>
-              <option>회수중</option>
-              <option>정지</option>
-              <option>만료</option>
-            </select>
-          </label>
-          <Button variant="ghost">변경</Button>
-        </form>
+        <AccountStatusForm
+          accounts={(accounts ?? []).map((a) => ({
+            id: a.id,
+            service: a.service,
+            kind: a.kind,
+            status: a.status,
+          }))}
+        />
       </Card>
 
       <Card title={`계정 목록 (${accounts?.length ?? 0})`}>

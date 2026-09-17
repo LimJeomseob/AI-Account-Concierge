@@ -36,6 +36,7 @@ import { runDaily } from '@/lib/cron/daily'
 import { runMonthly } from '@/lib/cron/monthly'
 import { sendTestMail } from '@/lib/mail/dispatch'
 import { transitionAccount } from '@/lib/state'
+import { ACCOUNT_TRANSITIONS, canTransitionAccount } from '@/lib/transitions'
 import { PROGRAM_SEED } from '@/lib/seed-data'
 import type { AccountStatus, IncidentStatus } from '@/lib/types'
 
@@ -221,12 +222,38 @@ export async function accountGeneratePasswordAction(fd: FormData) {
   revalidatePath('/admin/accounts')
 }
 
-export async function accountStatusAction(fd: FormData) {
+/**
+ * 계정 상태 수동 변경.
+ * 허용되지 않는 전이(PRD §5-2)는 예외 대신 메시지로 돌려준다 —
+ * Server Action 에서 예외를 던지면 화면 전체가 오류 페이지가 되기 때문.
+ */
+export async function accountStatusAction(
+  fd: FormData,
+): Promise<{ ok: boolean; msg: string }> {
   const actor = await requireAdminAction()
   const id = str(fd, 'id')
   const to = str(fd, 'status') as AccountStatus
-  await transitionAccount({ id, to, actor, action: 'account.status', detail: { manual: true } })
+  if (!id) return { ok: false, msg: '계정을 선택해 주세요.' }
+
+  const { data: row } = await db().from('accounts').select('status').eq('id', id).maybeSingle()
+  if (!row) return { ok: false, msg: `계정 ${id} 을(를) 찾을 수 없습니다.` }
+
+  const from = row.status as AccountStatus
+  if (from === to) return { ok: true, msg: `${id} 은(는) 이미 「${to}」 입니다.` }
+  if (!canTransitionAccount(from, to)) {
+    return {
+      ok: false,
+      msg: `「${from}」 → 「${to}」 로는 바꿀 수 없습니다. ${id} 에서 가능한 상태: ${ACCOUNT_TRANSITIONS[from].join('·')}`,
+    }
+  }
+
+  try {
+    await transitionAccount({ id, to, actor, action: 'account.status', detail: { manual: true } })
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message }
+  }
   revalidatePath('/admin/accounts')
+  return { ok: true, msg: `${id}: 「${from}」 → 「${to}」 로 변경했습니다.` }
 }
 
 // --- 장애 -------------------------------------------------------------------

@@ -4,37 +4,18 @@
  */
 import 'server-only'
 import { db } from '@/lib/db'
+import { canTransitionAccount, canTransitionAssignment } from '@/lib/transitions'
 import type { AccountStatus, AssignmentStatus } from '@/lib/types'
 
-// --- 전이표 (순수 데이터, 테스트 대상) --------------------------------------
-
-export const ASSIGNMENT_TRANSITIONS: Record<AssignmentStatus, AssignmentStatus[]> = {
-  신청: ['승인', '반려', '취소'],
-  승인: ['배정', '취소', '반려'],
-  배정: ['사용중', '인수기한초과', '회수중', '취소'],
-  사용중: ['회수중', '취소'],
-  회수중: ['회수완료', '취소'],
-  회수완료: [],
-  반려: [],
-  취소: [],
-  인수기한초과: ['회수중', '회수완료'],
-}
-
-export const ACCOUNT_TRANSITIONS: Record<AccountStatus, AccountStatus[]> = {
-  가용: ['배정', '정지', '만료'],
-  배정: ['회수중', '정지', '만료'],
-  회수중: ['가용', '정지', '만료'],
-  정지: ['가용', '회수중', '만료'],
-  만료: ['가용'],
-}
-
-export function canTransitionAssignment(from: AssignmentStatus, to: AssignmentStatus): boolean {
-  return from === to || ASSIGNMENT_TRANSITIONS[from].includes(to)
-}
-
-export function canTransitionAccount(from: AccountStatus, to: AccountStatus): boolean {
-  return from === to || ACCOUNT_TRANSITIONS[from].includes(to)
-}
+// --- 전이표 --------------------------------------------------------------
+// 순수 데이터는 lib/transitions.ts 에 있다(클라이언트 컴포넌트도 써야 하므로).
+export {
+  ACCOUNT_TRANSITIONS,
+  ASSIGNMENT_TRANSITIONS,
+  accountStatusOptions,
+  canTransitionAccount,
+  canTransitionAssignment,
+} from '@/lib/transitions'
 
 // --- 로그 -------------------------------------------------------------------
 
