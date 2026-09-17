@@ -71,6 +71,9 @@ export const L = {
   },
 } as const
 
+/** 프로그램 상태 순서 (PRD §4-1: 시작전 → 진행중 → 완료) */
+export const PROGRAM_STATUSES = ['시작전', '진행중', '완료'] as const
+
 /** 상태 배지 색상 (PRD §7) */
 export const STATUS_BADGE: Record<string, string> = {
   신청: 'bg-slate-100 text-slate-700 border-slate-200',

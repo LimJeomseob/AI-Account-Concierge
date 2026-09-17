@@ -1,9 +1,9 @@
 /** 프로그램 (PRD §7-2, R1~R6) */
 import { db } from '@/lib/db'
 import { Button, Card, Table, Td, inputClass } from '@/components/ui'
-import { L } from '@/lib/labels'
+import { L, PROGRAM_STATUSES } from '@/lib/labels'
 import { programSaveAction, programSeedAction } from '@/app/admin/actions'
-import StatusSelect, { PROGRAM_STATUSES } from './StatusSelect'
+import StatusSelect from './StatusSelect'
 import type { Program } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'

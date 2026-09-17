@@ -11,7 +11,7 @@ import { todayKST } from '@/lib/date'
 import { log } from '@/lib/state'
 import { nextProgramId } from '@/lib/ids'
 import { getSettings, setSetting, type Settings } from '@/lib/settings'
-import { CHECKLIST_FIELDS } from '@/lib/labels'
+import { CHECKLIST_FIELDS, PROGRAM_STATUSES } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
 import {
   acknowledge,
@@ -161,8 +161,6 @@ export async function programSeedAction() {
   await log(actor, 'program.seed', null, { inserted: n })
   revalidatePath('/admin/programs')
 }
-
-const PROGRAM_STATUSES: readonly ProgramStatus[] = ['시작전', '진행중', '완료']
 
 function parseProgramStatus(v: string): ProgramStatus | null {
   return (PROGRAM_STATUSES as readonly string[]).includes(v) ? (v as ProgramStatus) : null

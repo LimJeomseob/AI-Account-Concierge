@@ -6,10 +6,8 @@
  */
 import { useTransition } from 'react'
 import { programStatusAction } from '@/app/admin/actions'
-import { STATUS_BADGE } from '@/lib/labels'
+import { PROGRAM_STATUSES, STATUS_BADGE } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
-
-export const PROGRAM_STATUSES: ProgramStatus[] = ['시작전', '진행중', '완료']
 
 export default function StatusSelect({ id, value }: { id: string; value: ProgramStatus }) {
   const [pending, start] = useTransition()
