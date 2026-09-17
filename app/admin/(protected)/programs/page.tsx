@@ -1,9 +1,10 @@
 /** 프로그램 (PRD §7-2, R1~R6) */
 import { db } from '@/lib/db'
-import { Button, Card, Table, Td, inputClass } from '@/components/ui'
-import { L, PROGRAM_STATUSES } from '@/lib/labels'
-import { programSaveAction, programSeedAction } from '@/app/admin/actions'
+import { Button, Card, Table, Td } from '@/components/ui'
+import { L } from '@/lib/labels'
+import { programSeedAction } from '@/app/admin/actions'
 import StatusSelect from './StatusSelect'
+import ProgramForm from './ProgramForm'
 import type { Program } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -80,64 +81,7 @@ export default async function ProgramsPage() {
       </Card>
 
       <Card title="등록·수정">
-        <form action={programSaveAction} className="grid gap-3 sm:grid-cols-3">
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">프로그램ID (비우면 자동 채번)</span>
-            <input name="id" className={inputClass} placeholder="P26-01" />
-          </label>
-          <label className="text-sm sm:col-span-2">
-            <span className="text-xs text-slate-600">{L.program.name} *</span>
-            <input name="name" required className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.target}</span>
-            <select name="target" className={inputClass}>
-              <option>혼합</option>
-              <option>교원</option>
-              <option>직원</option>
-              <option>학생</option>
-              <option>지역민</option>
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.mode}</span>
-            <select name="mode" className={inputClass}>
-              <option>고정기간</option>
-              <option>배정일기준</option>
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.days} (배정일기준)</span>
-            <input name="days" type="number" min={0} defaultValue={0} className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.start_on}</span>
-            <input name="start_on" type="date" className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.end_on}</span>
-            <input name="end_on" type="date" className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.cap} (0=무제한)</span>
-            <input name="cap" type="number" min={0} defaultValue={0} className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.program.status}</span>
-            <select name="status" defaultValue="시작전" className={inputClass}>
-              {PROGRAM_STATUSES.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm sm:col-span-2">
-            <span className="text-xs text-slate-600">비고</span>
-            <input name="note" className={inputClass} />
-          </label>
-          <div className="sm:col-span-3">
-            <Button>저장</Button>
-          </div>
-        </form>
+        <ProgramForm programs={(programs ?? []) as Program[]} />
       </Card>
     </>
   )

@@ -103,13 +103,24 @@ export async function autoAssignAction() {
 
 // --- 프로그램 ---------------------------------------------------------------
 
-export async function programSaveAction(fd: FormData) {
+/**
+ * 프로그램 등록·수정. id 가 비어 있으면 신규로 보고 자동 채번(R1).
+ * 오류는 예외 대신 메시지로 돌려준다(화면 전체 오류 페이지 방지).
+ */
+export async function programSaveAction(
+  fd: FormData,
+): Promise<{ ok: boolean; msg: string; id?: string }> {
   const actor = await requireAdminAction()
+  const name = str(fd, 'name')
+  if (!name) return { ok: false, msg: '프로그램명을 입력해 주세요.' }
+
   const s = await getSettings()
-  const id = str(fd, 'id') || (await nextProgramId(s.program_id_prefix))
+  const given = str(fd, 'id')
+  const created = !given
+  const id = given || (await nextProgramId(s.program_id_prefix))
   const row = {
     id,
-    name: str(fd, 'name'),
+    name,
     target: str(fd, 'target') || '혼합',
     mode: str(fd, 'mode') || '고정기간',
     days: num(fd, 'days'),
@@ -120,9 +131,16 @@ export async function programSaveAction(fd: FormData) {
     note: str(fd, 'note') || null,
   }
   const { error } = await db().from('programs').upsert(row, { onConflict: 'id' })
-  if (error) throw new Error(error.message)
-  await log(actor, 'program.save', id, row)
+  if (error) {
+    const msg = /programs_name_key|unique/i.test(error.message)
+      ? `같은 이름의 프로그램이 이미 있습니다: ${name}`
+      : error.message
+    return { ok: false, msg }
+  }
+  await log(actor, 'program.save', id, { ...row, created })
   revalidatePath('/admin/programs')
+  revalidatePath('/apply')
+  return { ok: true, id, msg: created ? `${id} 로 등록했습니다.` : `${id} 을(를) 수정했습니다.` }
 }
 
 export async function programSeedAction() {
