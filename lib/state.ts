@@ -79,7 +79,15 @@ export async function transitionAccount(opts: {
   if (!canTransitionAccount(from, opts.to)) {
     throw new Error(`허용되지 않는 계정 상태 전이: ${from} → ${opts.to} (${opts.id})`)
   }
-  const patch = { ...(opts.patch ?? {}), status: opts.to, updated_at: new Date().toISOString() }
+  // PRD §4-2: current_assignment_id 는 배정·회수중일 때만 값이 있다(DB check 제약).
+  // 정지·만료·가용으로 갈 때 호출자가 따로 지정하지 않으면 연결을 푼다.
+  const keepsLink = opts.to === '배정' || opts.to === '회수중'
+  const patch = {
+    ...(keepsLink ? {} : { current_assignment_id: null }),
+    ...(opts.patch ?? {}),
+    status: opts.to,
+    updated_at: new Date().toISOString(),
+  }
   const { error: upErr } = await db().from('accounts').update(patch).eq('id', opts.id)
   if (upErr) throw new Error(upErr.message)
 

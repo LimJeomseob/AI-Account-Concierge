@@ -489,9 +489,11 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 
 ## 16. 테스트 시나리오 (수용 기준)
 
+실행: `ACCEPTANCE_CONFIRM=yes npm run test:acceptance` (시범/스테이징 DB). `lib/__tests__/acceptance.integration.test.ts` 가 T1~T13 을, `lib/__tests__/lifecycle.integration.test.ts` 가 신청자 1명의 생애주기(신청→접수→배정→인수→종료→회수→재배정)를 단계별 보고서로 검수한다(`SIM_EMAIL` 로 신청자 지정).
+
 | # | 시나리오 | 기대 결과 |
 |---|---|---|
-| T1 | 기간 미설정 프로그램으로 신청 | 400 「접수 준비 중(대여기간 미설정)」, 페이지에서는 옵션 비활성 |
+| T1 | 진행중 + 기간 미설정 프로그램으로 신청 | 접수됨(대여기간 「추후 안내」, rent_start·rent_end 비움). 승인해도 기간 입력 전까지 「승인」에 머묾(배정 보류). 시작전·완료 프로그램은 거부 |
 | T2 | 정상 신청 2건(같은 이메일·같은 프로그램) | 1건 접수 + 접수안내 메일, 2번째 중복 거부 |
 | T3 | 승인(가용 GPT 1·Claude 1, 희망 GPT·무관·Claude 3명) | 신청 순으로 2명 배정(희망 반영), 1명 승인 대기, 배정안내 메일 2통(계정명·접속 링크 포함) |
 | T4 | 인수 링크 클릭 / 위조 토큰 | 사용중 전환·acknowledged_at 기록 / 「링크가 올바르지 않습니다」 |

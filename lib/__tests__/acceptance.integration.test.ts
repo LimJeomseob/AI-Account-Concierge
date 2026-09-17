@@ -145,7 +145,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     await db().from('programs').delete().like('id', `${RUN}%`)
   }, 60_000)
 
-  it('T1 — 기간 미설정 프로그램 신청은 「접수 준비 중」으로 거부', async () => {
+  it('T1 — 진행중 + 기간 미설정 프로그램은 접수되고(R3) 대여기간은 「추후 안내」, 배정은 보류', async () => {
     const res = await M.apply.applyForAccount({
       programId: PROG_NOPERIOD,
       name: '테스트1',
@@ -153,8 +153,17 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
       type: '학생',
       email: mail(9),
     })
-    expect(res.ok).toBe(false)
-    if (!res.ok) expect(res.msg).toContain('접수 준비 중')
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.period).toContain('추후 안내')
+    const { data: row } = await M.db.db().from('assignments').select('status, rent_start, rent_end').eq('id', res.id).single()
+    expect(row?.status).toBe('신청')
+    expect(row?.rent_start).toBeNull()
+    // 기간이 없으므로 승인해도 배정되지 않고 「승인」에 머문다 (R14·R15)
+    const r = await M.assignments.approveAssignments([res.id], 'acceptance@test', today)
+    expect(r.assigned).toHaveLength(0)
+    const { data: after } = await M.db.db().from('assignments').select('status').eq('id', res.id).single()
+    expect(after?.status).toBe('승인')
   })
 
   it('T2 — 같은 이메일·같은 프로그램 2번째 신청은 중복 거부, 접수안내 메일 1통', async () => {

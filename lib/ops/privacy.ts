@@ -27,9 +27,11 @@ export async function purgeUsers(userIds: string[] | null, actor: string): Promi
     const { data: user } = await db().from('users').select('id, email').eq('id', id).maybeSingle()
     if (!user) continue
 
+    // users.email 은 소문자 제약(users_email_lower)이 있어 ID 를 소문자로 쓴다
+    const purgedEmail = `${id.toLowerCase()}@purged.local`
     const { error: aErr } = await db()
       .from('assignments')
-      .update({ name: PURGED, email: `${id}@purged.local`, updated_at: new Date().toISOString() })
+      .update({ name: PURGED, email: purgedEmail, updated_at: new Date().toISOString() })
       .eq('user_id', id)
     if (aErr) throw new Error(aErr.message)
 
@@ -37,7 +39,7 @@ export async function purgeUsers(userIds: string[] | null, actor: string): Promi
       .from('users')
       .update({
         name: PURGED,
-        email: `${id}@purged.local`,
+        email: purgedEmail,
         phone: null,
         purged_at: new Date().toISOString(),
       })
