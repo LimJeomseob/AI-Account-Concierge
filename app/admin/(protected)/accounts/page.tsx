@@ -74,7 +74,17 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
         <form action={accountStatusAction} className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
             <span className="text-xs text-slate-600">{L.account.id}</span>
-            <input name="id" required className={inputClass} />
+            {/* 등록된 계정 중에서 고른다 (오타로 없는 ID 를 넣는 일 방지) */}
+            <select name="id" required defaultValue="" className={inputClass}>
+              <option value="" disabled>
+                계정을 선택하세요
+              </option>
+              {(accounts ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {`${a.id} · ${a.service} · ${a.kind} · 현재 ${a.status}`}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm">
             <span className="text-xs text-slate-600">{L.account.status}</span>
