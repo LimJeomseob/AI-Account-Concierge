@@ -70,6 +70,26 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
         </Card>
       )}
 
+      <Card title="상태 변경">
+        <form action={accountStatusAction} className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="text-xs text-slate-600">{L.account.id}</span>
+            <input name="id" required className={inputClass} />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs text-slate-600">{L.account.status}</span>
+            <select name="status" className={inputClass}>
+              <option>가용</option>
+              <option>배정</option>
+              <option>회수중</option>
+              <option>정지</option>
+              <option>만료</option>
+            </select>
+          </label>
+          <Button variant="ghost">변경</Button>
+        </form>
+      </Card>
+
       <Card title={`계정 목록 (${accounts?.length ?? 0})`}>
         <form action={accountGeneratePasswordAction} className="space-y-2">
           <Table
@@ -110,26 +130,6 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
             })}
           </Table>
           <Button variant="ghost">선택 계정 신규 비밀번호 생성</Button>
-        </form>
-      </Card>
-
-      <Card title="상태 변경">
-        <form action={accountStatusAction} className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.account.id}</span>
-            <input name="id" required className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.account.status}</span>
-            <select name="status" className={inputClass}>
-              <option>가용</option>
-              <option>배정</option>
-              <option>회수중</option>
-              <option>정지</option>
-              <option>만료</option>
-            </select>
-          </label>
-          <Button variant="ghost">변경</Button>
         </form>
       </Card>
 
