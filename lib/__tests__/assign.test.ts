@@ -43,10 +43,12 @@ describe('isOpenForApply / isAssignable (R3·R15)', () => {
     expect(isAssignable(notStarted, '2026-09-04')).toBe(false)
   })
 
-  it('진행중 + 기간 설정만 접수 가능', () => {
+  it('진행중이면 대여기간이 없어도 접수는 가능(배정만 보류)', () => {
     expect(isOpenForApply(fixed, '2026-09-04')).toBe(true)
     expect(isOpenForApply(rolling, '2026-09-04')).toBe(true)
-    expect(isOpenForApply({ ...fixed, start_on: null }, '2026-09-04')).toBe(false)
+    const noPeriod = { ...fixed, start_on: null }
+    expect(isOpenForApply(noPeriod, '2026-09-04')).toBe(true)
+    expect(isAssignable(noPeriod, '2026-09-04')).toBe(false)
   })
 
   it('고정기간 프로그램은 종료일이 지나면 배정 대상에서 빠진다', () => {
@@ -64,19 +66,20 @@ describe('applyAvailability (R3: 프로그램 상태 ↔ 신청 페이지 표시
     })
   })
 
-  it('진행중 + 기간 미설정 → 접수 준비 중(대여기간 미설정)', () => {
+  it('진행중 + 기간 미설정 → 접수중, 기간은 추후 안내', () => {
     expect(applyAvailability({ ...fixed, start_on: null }, '2026-09-04')).toMatchObject({
-      open: false,
-      reason: '기간미설정',
-      label: '접수 준비 중(대여기간 미설정)',
+      open: true,
+      reason: null,
+      label: '접수중',
+      period: '대여기간 추후 안내(배정 시 확정)',
     })
   })
 
-  it('진행중 + 기간 설정 → 접수 가능, 대여기간 문구', () => {
+  it('진행중 + 기간 설정 → 접수중, 대여기간 문구', () => {
     expect(applyAvailability(fixed, '2026-09-04')).toEqual({
       open: true,
       reason: null,
-      label: '',
+      label: '접수중',
       period: '2026-09-01 ~ 2026-09-30',
     })
     expect(applyAvailability(rolling, '2026-09-04').period).toBe('배정일부터 30일')

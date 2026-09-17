@@ -46,13 +46,23 @@ export default async function ProgramsPage() {
                 <Td className="text-xs">{p.target}</Td>
                 <Td className="text-xs">{p.mode}</Td>
                 <Td className="text-xs">
-                  {p.mode === '고정기간'
-                    ? p.start_on && p.end_on
-                      ? `${p.start_on} ~ ${p.end_on}`
-                      : '미설정'
-                    : p.days > 0
-                      ? `배정일부터 ${p.days}일`
-                      : '미설정'}
+                  {(() => {
+                    const text =
+                      p.mode === '고정기간'
+                        ? p.start_on && p.end_on
+                          ? `${p.start_on} ~ ${p.end_on}`
+                          : null
+                        : p.days > 0
+                          ? `배정일부터 ${p.days}일`
+                          : null
+                    if (text) return text
+                    // 진행중인데 기간이 없으면 접수는 되지만 자동 배정이 보류된다 (R14·R15)
+                    return p.status === '진행중' ? (
+                      <span className="text-amber-700">미설정 — 배정 보류</span>
+                    ) : (
+                      '미설정'
+                    )
+                  })()}
                 </Td>
                 <Td className="text-xs">{p.cap === 0 ? '무제한' : p.cap}</Td>
                 <Td className="text-xs">{used.get(p.id) ?? 0}</Td>

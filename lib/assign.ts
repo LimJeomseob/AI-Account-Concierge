@@ -47,55 +47,55 @@ export function periodFor(
 }
 
 /** R3: 접수 불가 사유 */
-export type ApplyBlockReason = '시작전' | '기간미설정' | '완료'
+export type ApplyBlockReason = '시작전' | '완료'
 
 export interface ApplyAvailability {
   open: boolean
   reason: ApplyBlockReason | null
-  /** 신청 페이지 드롭다운에 붙일 문구 (open 이면 빈 문자열) */
+  /** 신청 페이지 드롭다운에 붙일 문구 (접수중 / 접수 준비 중 / 접수 종료) */
   label: string
-  /** 대여기간 표시 문구 (open 이 아니면 label 과 같음) */
+  /** 대여기간 표시 문구 */
   period: string
 }
 
 export const APPLY_BLOCK_LABEL: Record<ApplyBlockReason, string> = {
   시작전: '접수 준비 중',
-  기간미설정: '접수 준비 중(대여기간 미설정)',
   완료: '접수 종료',
 }
+
+export const APPLY_OPEN_LABEL = '접수중'
+/** 대여기간을 아직 입력하지 않은 「진행중」 프로그램의 기간 표시 */
+export const PERIOD_TBD = '대여기간 추후 안내(배정 시 확정)'
 
 /**
  * R3: 프로그램 상태 ↔ 신청 페이지 표시를 한 곳에서 결정한다.
  * 공개 API·/apply 페이지·접수 검증(lib/ops/apply.ts)이 모두 이 함수를 쓴다.
- * - 시작전  → 접수 준비 중
- * - 진행중 + 기간 미설정 → 접수 준비 중(대여기간 미설정)
- * - 진행중 + 기간 설정 → 접수 가능
- * - 완료   → 접수 종료
+ * - 시작전 → 접수 준비 중 (선택 불가)
+ * - 진행중 → 접수중 (선택 가능). 대여기간이 아직 없으면 「추후 안내」로 표시하고 접수는 받는다.
+ * - 완료   → 접수 종료 (선택 불가)
  */
 export function applyAvailability(
   program: Pick<Program, 'mode' | 'days' | 'start_on' | 'end_on' | 'status'>,
   today: string = todayKST(),
 ): ApplyAvailability {
-  const blocked = (reason: ApplyBlockReason): ApplyAvailability => ({
-    open: false,
-    reason,
-    label: APPLY_BLOCK_LABEL[reason],
-    period: APPLY_BLOCK_LABEL[reason],
-  })
-  if (program.status === '시작전') return blocked('시작전')
-  if (program.status === '완료') return blocked('완료')
+  if (program.status !== '진행중') {
+    const reason: ApplyBlockReason = program.status === '완료' ? '완료' : '시작전'
+    return { open: false, reason, label: APPLY_BLOCK_LABEL[reason], period: APPLY_BLOCK_LABEL[reason] }
+  }
   const period = periodFor(program, today)
-  if (!period) return blocked('기간미설정')
   return {
     open: true,
     reason: null,
-    label: '',
-    period:
-      program.mode === '고정기간' ? `${period.start} ~ ${period.end}` : `배정일부터 ${program.days}일`,
+    label: APPLY_OPEN_LABEL,
+    period: !period
+      ? PERIOD_TBD
+      : program.mode === '고정기간'
+        ? `${period.start} ~ ${period.end}`
+        : `배정일부터 ${program.days}일`,
   }
 }
 
-/** R3: 공개 신청 페이지에서 선택할 수 있는 프로그램인가 (진행중 + 대여기간 설정) */
+/** R3: 공개 신청 페이지에서 선택할 수 있는 프로그램인가 (상태 「진행중」) */
 export function isOpenForApply(
   program: Pick<Program, 'mode' | 'days' | 'start_on' | 'end_on' | 'status'>,
   today: string = todayKST(),

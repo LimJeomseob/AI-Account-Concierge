@@ -6,7 +6,7 @@ interface ProgramOption {
   id: string
   name: string
   open: boolean
-  /** 접수 불가 사유 문구 (open 이면 빈 문자열) */
+  /** 접수중 / 접수 준비 중 / 접수 종료 */
   label: string
   period: string
 }
@@ -137,7 +137,7 @@ export default function ApplyForm({
                 <option value="">프로그램을 선택하세요</option>
                 {programs.map((p) => (
                   <option key={p.id} value={p.id} disabled={!p.open}>
-                    {p.open ? p.name : `${p.name} — ${p.label}`}
+                    {`${p.name} — ${p.label}`}
                   </option>
                 ))}
               </select>

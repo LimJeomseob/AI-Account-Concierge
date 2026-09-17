@@ -45,8 +45,8 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
   const avail = applyAvailability(program, today)
   if (avail.reason === '시작전') return { ok: false, msg: '아직 접수를 시작하지 않은 프로그램입니다.' }
   if (avail.reason === '완료') return { ok: false, msg: '종료된 프로그램입니다.' }
+  // 대여기간은 아직 없을 수 있다(진행중·기간 미입력). 그때는 배정 시점에 확정한다.
   const period = periodFor(program, today)
-  if (!avail.open || !period) return { ok: false, msg: '접수 준비 중(대여기간 미설정)인 프로그램입니다.' }
 
   // R9: 이메일 소문자 정규화 + 같은 프로그램 활성 중복 거부
   const email = input.email.trim().toLowerCase()
@@ -112,8 +112,8 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     status: '신청',
     applied_at: nowIso,
     edu_watched_at: input.eduWatchedAt ?? nowIso,
-    rent_start: program.mode === '고정기간' ? period.start : null,
-    rent_end: program.mode === '고정기간' ? period.end : null,
+    rent_start: program.mode === '고정기간' ? (period?.start ?? null) : null,
+    rent_end: program.mode === '고정기간' ? (period?.end ?? null) : null,
   })
   if (aErr) {
     if (/assignments_active_unique/.test(aErr.message)) {
@@ -129,9 +129,5 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     await log('system', 'mail.intake.error', id, { message: (e as Error).message })
   }
 
-  const periodText =
-    program.mode === '고정기간'
-      ? `${period.start} ~ ${period.end}`
-      : `배정일부터 ${program.days}일`
-  return { ok: true, id, period: periodText }
+  return { ok: true, id, period: avail.period }
 }
