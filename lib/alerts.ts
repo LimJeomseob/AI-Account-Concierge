@@ -4,7 +4,6 @@
  */
 import 'server-only'
 import { db } from '@/lib/db'
-import { decrypt } from '@/lib/crypto'
 import { diffDays, todayKST } from '@/lib/date'
 
 export type AlertCategory = '대여기간 만료' | '인수기한 초과'
@@ -18,7 +17,6 @@ export interface AlertRow {
   program_name: string
   rent_end: string | null
   elapsed_days: number
-  password_status: string | null
   guide: string
 }
 
@@ -27,11 +25,12 @@ export function alertText(input: {
   category: AlertCategory
   rentEnd: string | null
   elapsedDays: number
-  passwordChanged: boolean
+  /** 회수 체크리스트 2개(대화·메모리 삭제, 팀에서 제거)가 모두 끝났는가 */
+  checklistDone: boolean
 }): string {
-  if (input.passwordChanged) return '비밀번호 변경 완료 — 회수 완료 처리 필요'
+  if (input.checklistDone) return '회수 체크리스트 완료 — 회수 완료 처리 필요'
   if (input.category === '인수기한 초과') return '⚠ 인수기한 초과 — 회수 필요'
-  return `⚠ 대여기간 만료(${input.rentEnd ?? '-'}, D+${input.elapsedDays}) — 비밀번호 변경 필요(신규비밀번호 생성됨)`
+  return `⚠ 대여기간 만료(${input.rentEnd ?? '-'}, D+${input.elapsedDays}) — 대화·메모리 삭제 후 팀에서 제거 필요`
 }
 
 /** alerts 전체 재생성 + accounts.alert 갱신. 멱등(R32). */
@@ -39,21 +38,19 @@ export async function rebuildAlerts(today: string = todayKST()): Promise<number>
   const { data: rows, error } = await db()
     .from('assignments')
     .select(
-      'id, name, status, account_id, rent_end, chk_password_changed, notified_at, programs(name)',
+      'id, name, status, account_id, rent_end, chk_delete_chats, chk_team_removed, notified_at, programs(name)',
     )
     .in('status', ['회수중', '인수기한초과'])
   if (error) throw new Error(error.message)
 
   const accountIds = (rows ?? []).map((r) => r.account_id).filter((v): v is string => !!v)
-  const secrets = new Map<string, { login_email: string | null; password_status: string }>()
+  const secrets = new Map<string, { login_email: string | null }>()
   if (accountIds.length > 0) {
     const { data: secs } = await db()
       .from('account_secrets')
-      .select('account_id, login_email, password_status')
+      .select('account_id, login_email')
       .in('account_id', accountIds)
-    for (const s of secs ?? []) {
-      secrets.set(s.account_id, { login_email: s.login_email, password_status: s.password_status })
-    }
+    for (const s of secs ?? []) secrets.set(s.account_id, { login_email: s.login_email })
   }
 
   const alerts: AlertRow[] = []
@@ -66,7 +63,7 @@ export async function rebuildAlerts(today: string = todayKST()): Promise<number>
       category,
       rentEnd: r.rent_end,
       elapsedDays: elapsed,
-      passwordChanged: r.chk_password_changed,
+      checklistDone: r.chk_delete_chats && r.chk_team_removed,
     })
     const sec = r.account_id ? secrets.get(r.account_id) : undefined
     alerts.push({
@@ -78,7 +75,6 @@ export async function rebuildAlerts(today: string = todayKST()): Promise<number>
       program_name: (r as unknown as { programs: { name: string } | null }).programs?.name ?? '',
       rent_end: r.rent_end,
       elapsed_days: elapsed,
-      password_status: sec?.password_status ?? null,
       guide: text,
     })
     if (r.account_id) accountAlert.set(r.account_id, text)
@@ -110,7 +106,3 @@ export async function listAlerts(): Promise<AlertRow[]> {
   return (data ?? []) as unknown as AlertRow[]
 }
 
-/** 금고 열람(R? §7-2 계정 「보기」) — 복호화 + 열람 로그는 호출부에서 기록 */
-export function decryptSecret(enc: string | null): string | null {
-  return decrypt(enc)
-}

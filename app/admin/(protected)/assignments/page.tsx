@@ -9,7 +9,6 @@ import {
   cancelAction,
   checklistAction,
   completeReturnAction,
-  passwordAppliedAction,
   rejectAction,
   resendMailAction,
 } from '@/app/admin/actions'
@@ -26,7 +25,7 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   let query = db()
     .from('assignments')
     .select(
-      'id, name, email, program_id, service_wish, account_id, service, status, applied_at, approved_on, assigned_on, rent_start, rent_end, notified_at, acknowledged_at, note, chk_delete_chats, chk_delete_memory, chk_logout_all, chk_history_review, chk_password_changed, programs(name)',
+      'id, name, email, program_id, service_wish, account_id, service, status, applied_at, approved_on, assigned_on, rent_start, rent_end, notified_at, acknowledged_at, note, chk_delete_chats, chk_team_removed, programs(name)',
     )
     .order('applied_at', { ascending: false })
     .limit(300)
@@ -119,12 +118,6 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
                 <input type="hidden" name="id" value={r.id} />
                 <Button variant="ghost">안내 메일 재발송</Button>
               </form>
-              {r.account_id && (
-                <form action={passwordAppliedAction}>
-                  <input type="hidden" name="accountId" value={r.account_id} />
-                  <Button variant="ghost">비밀번호 변경 완료</Button>
-                </form>
-              )}
               <form action={cancelAction}>
                 <input type="hidden" name="id" value={r.id} />
                 <input
@@ -138,7 +131,10 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
 
             {(r.status === '회수중' || r.status === '인수기한초과') && (
               <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 p-3">
-                <p className="text-xs font-medium text-orange-800">회수 체크리스트 (5개 모두 완료해야 회수 완료)</p>
+                <p className="text-xs font-medium text-orange-800">회수 체크리스트 (2개 모두 완료해야 회수 완료)</p>
+                <p className="mt-1 text-xs text-orange-700">
+                  ① 좌석에 로그인해 대화·메모리 삭제 → ② 팀 콘솔에서 좌석 제거(접속 차단)
+                </p>
                 <div className="mt-2 flex flex-wrap gap-3">
                   {CHECKLIST_FIELDS.map((f) => {
                     const checked = Boolean((r as unknown as Record<string, boolean>)[f])

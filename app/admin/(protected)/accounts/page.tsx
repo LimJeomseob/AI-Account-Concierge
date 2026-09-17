@@ -1,74 +1,24 @@
-/** 계정·금고 (PRD §7-2) */
-import Link from 'next/link'
+/** 계정(팀 좌석) (PRD §7-2) */
 import { db } from '@/lib/db'
 import { requireAdmin } from '@/lib/auth'
-import { viewVault } from '@/lib/ops/accounts'
 import { Badge, Button, Card, Table, Td, inputClass } from '@/components/ui'
 import { L } from '@/lib/labels'
-import {
-  accountGeneratePasswordAction,
-  accountImportAction,
-  accountSaveAction,
-} from '@/app/admin/actions'
+import { accountImportAction, accountSaveAction } from '@/app/admin/actions'
 import AccountStatusForm from './AccountStatusForm'
+import AccessUrlForm from './AccessUrlForm'
 
 export const dynamic = 'force-dynamic'
 
-type Search = Promise<{ reveal?: string }>
-
-export default async function AccountsPage({ searchParams }: { searchParams: Search }) {
-  const admin = await requireAdmin()
-  const { reveal } = await searchParams
+export default async function AccountsPage() {
+  await requireAdmin()
 
   const { data: accounts } = await db().from('accounts').select('*').order('id')
-  const { data: secrets } = await db()
-    .from('account_secrets')
-    .select('account_id, login_email, password_status, password_changed_at, owns_registered_email, two_fa')
+  const { data: secrets } = await db().from('account_secrets').select('account_id, login_email, access_url')
   const secMap = new Map((secrets ?? []).map((s) => [s.account_id, s]))
-
-  // 금고 「보기」 — 복호화 + 열람 로그 (PRD §4-1)
-  const vault = reveal ? await viewVault(reveal, admin) : null
 
   return (
     <>
       <h1 className="text-xl font-bold text-[var(--gnu-navy)]">{L.menu.accounts}</h1>
-
-      {vault && (
-        <Card title={`금고 열람 — ${vault.account_id}`}>
-          <p className="text-xs text-slate-500">열람 기록이 로그에 남았습니다.</p>
-          <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-xs text-slate-500">{L.account.login_email}</dt>
-              <dd className="font-mono">{vault.login_email ?? '-'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">{L.account.password}</dt>
-              <dd className="font-mono">{vault.password ?? '-'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">{L.account.new_password}</dt>
-              <dd className="font-mono">{vault.new_password ?? '-'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">{L.account.password_status}</dt>
-              <dd>
-                <Badge value={vault.password_status} />
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">{L.account.two_fa}</dt>
-              <dd className="font-mono">{vault.two_fa ?? '-'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">{L.account.owns_registered_email}</dt>
-              <dd>{vault.owns_registered_email ? '예' : '아니오'}</dd>
-            </div>
-          </dl>
-          <Link href="/admin/accounts" className="mt-3 inline-block text-xs text-blue-700">
-            닫기
-          </Link>
-        </Card>
-      )}
 
       <Card title="상태 변경">
         <AccountStatusForm
@@ -82,46 +32,66 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
       </Card>
 
       <Card title={`계정 목록 (${accounts?.length ?? 0})`}>
-        <form action={accountGeneratePasswordAction} className="space-y-2">
-          <Table
-            head={[
-              '선택', L.account.id, L.account.service, L.account.kind, L.account.status,
-              L.account.current, L.account.expires_on, L.account.assigned_days, L.account.assigned_count,
-              L.account.password_status, L.account.alert, '',
-            ]}
-          >
-            {(accounts ?? []).map((a) => {
-              const s = secMap.get(a.id)
-              return (
-                <tr key={a.id}>
-                  <Td>
-                    <input type="checkbox" name="ids" value={a.id} />
-                  </Td>
-                  <Td className="text-xs">{a.id}</Td>
-                  <Td className="text-xs">{a.service}</Td>
-                  <Td className="text-xs">{a.kind}</Td>
-                  <Td>
-                    <Badge value={a.status} />
-                  </Td>
-                  <Td className="text-xs">{a.current_assignment_id ?? '-'}</Td>
-                  <Td className="text-xs">{a.expires_on ?? '-'}</Td>
-                  <Td className="text-xs">{a.assigned_days}</Td>
-                  <Td className="text-xs">{a.assigned_count}</Td>
-                  <Td>
-                    <Badge value={s?.password_status} />
-                  </Td>
-                  <Td className="text-xs text-orange-700">{a.alert ?? ''}</Td>
-                  <Td>
-                    <Link href={`/admin/accounts?reveal=${a.id}`} className="text-xs text-blue-700">
-                      금고 보기
-                    </Link>
-                  </Td>
-                </tr>
-              )
-            })}
-          </Table>
-          <Button variant="ghost">선택 계정 신규 비밀번호 생성</Button>
-        </form>
+        <Table
+          head={[
+            L.account.id, L.account.service, L.account.kind, L.account.status,
+            L.account.login_email, L.account.access_url, L.account.current, L.account.expires_on,
+            L.account.assigned_days, L.account.assigned_count, L.account.alert,
+          ]}
+        >
+          {(accounts ?? []).map((a) => {
+            const s = secMap.get(a.id)
+            return (
+              <tr key={a.id}>
+                <Td className="text-xs">{a.id}</Td>
+                <Td className="text-xs">{a.service}</Td>
+                <Td className="text-xs">{a.kind}</Td>
+                <Td>
+                  <Badge value={a.status} />
+                </Td>
+                <Td className="text-xs">{s?.login_email ?? '-'}</Td>
+                <Td className="text-xs">
+                  {/* 링크가 없는 좌석은 배정되지 않는다 (R14-2) */}
+                  {s?.access_url ? (
+                    <a
+                      href={s.access_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-700 underline"
+                      title={s.access_url}
+                    >
+                      {s.access_url.length > 32 ? `${s.access_url.slice(0, 32)}…` : s.access_url}
+                    </a>
+                  ) : (
+                    <Badge value="미등록" />
+                  )}
+                </Td>
+                <Td className="text-xs">{a.current_assignment_id ?? '-'}</Td>
+                <Td className="text-xs">{a.expires_on ?? '-'}</Td>
+                <Td className="text-xs">{a.assigned_days}</Td>
+                <Td className="text-xs">{a.assigned_count}</Td>
+                <Td className="text-xs text-orange-700">{a.alert ?? ''}</Td>
+              </tr>
+            )
+          })}
+        </Table>
+      </Card>
+
+      <Card title="접속 링크 등록·수정">
+        <p className="mb-3 text-xs text-slate-600">
+          팀 콘솔에서 좌석마다 발급한 고정 접속 링크를 넣어 주세요. 링크가 없는 좌석은 배정 대상에서 제외되고
+          배정안내 메일도 보류됩니다.
+        </p>
+        <div className="space-y-2">
+          {(accounts ?? []).map((a) => (
+            <div key={a.id} className="flex flex-wrap items-center gap-3">
+              <span className="w-40 text-xs text-slate-600">
+                {a.id} · {a.service} · {a.kind}
+              </span>
+              <AccessUrlForm id={a.id} value={secMap.get(a.id)?.access_url ?? null} />
+            </div>
+          ))}
+        </div>
       </Card>
 
       <Card title="계정 등록">
@@ -148,13 +118,12 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
             <span className="text-xs text-slate-600">{L.account.login_email}</span>
             <input name="login_email" className={inputClass} />
           </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.account.password}</span>
-            <input name="password" className={inputClass} />
-          </label>
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">{L.account.two_fa}</span>
-            <input name="two_fa" className={inputClass} />
+          <label className="text-sm sm:col-span-2">
+            <span className="text-xs text-slate-600">{L.account.access_url}</span>
+            <input name="access_url" type="url" placeholder="https://…" className={inputClass} />
+            <span className="mt-1 block text-xs text-slate-500">
+              접속 링크가 없으면 배정 대상에서 제외됩니다.
+            </span>
           </label>
           <label className="text-sm">
             <span className="text-xs text-slate-600">{L.account.activated_on}</span>
@@ -163,10 +132,6 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
           <label className="text-sm">
             <span className="text-xs text-slate-600">{L.account.expires_on}</span>
             <input name="expires_on" type="date" className={inputClass} />
-          </label>
-          <label className="flex items-end gap-2 text-sm">
-            <input type="checkbox" name="owns_registered_email" />
-            <span className="text-xs text-slate-600">{L.account.owns_registered_email}</span>
           </label>
           <div className="sm:col-span-3">
             <Button>저장</Button>
@@ -177,7 +142,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
       <Card title="CSV 가져오기">
         <form action={accountImportAction} className="space-y-2">
           <p className="text-xs text-slate-500">
-            헤더: 계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA
+            헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일
           </p>
           <textarea name="csv" rows={8} className={`${inputClass} font-mono text-xs`} />
           <Button>가져오기</Button>

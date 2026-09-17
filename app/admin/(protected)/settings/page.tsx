@@ -30,7 +30,6 @@ export default async function SettingsPage() {
         <form action={settingsSaveAction} className="grid gap-3 sm:grid-cols-3">
           <Num name="ack_due_days" label="인수 확인 기한(일)" value={s.ack_due_days} />
           <Num name="account_expiry_alert_days" label="구독 만료 D-N 알림" value={s.account_expiry_alert_days} />
-          <Num name="password_length" label="비밀번호 길이" value={s.password_length} />
           <Num name="suspension_rate_warn" label="정지율 경고(%)" value={s.suspension_rate_warn} />
           <Num name="target_headcount" label="목표 연인원" value={s.target_headcount} />
           <Txt name="program_id_prefix" label="프로그램ID 접두" value={s.program_id_prefix} />
@@ -54,14 +53,6 @@ export default async function SettingsPage() {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="auto_assign_on_approve" defaultChecked={s.auto_assign_on_approve} />
             <span className="text-xs text-slate-600">승인 즉시 배정·발송</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="show_new_password_in_digest"
-              defaultChecked={s.show_new_password_in_digest}
-            />
-            <span className="text-xs text-slate-600">점검 메일에 신규 비밀번호 표시</span>
           </label>
           <div className="sm:col-span-3">
             <Button>설정 저장</Button>

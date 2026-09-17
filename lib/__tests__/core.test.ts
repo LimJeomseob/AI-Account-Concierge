@@ -1,17 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { addDays, diffDays, formatKorean, inclusiveDays, monthKST, prevMonthKST, todayKST, yymmddKST } from '@/lib/date'
-import { generatePassword, isValidPassword } from '@/lib/password'
 import { renderTemplate, extractPlaceholders, textToHtml } from '@/lib/mail/render'
 import { formatAccountId, formatAssignmentId, formatProgramId, formatUserId } from '@/lib/ids'
 import { alertText } from '@/lib/alerts'
 import { canTransitionAccount, canTransitionAssignment } from '@/lib/state'
 import { toCsv } from '@/lib/report'
 import { sign, verify } from '@/lib/token'
-import { parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
+import { normalizeUrl, parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
 
 beforeAll(() => {
   process.env.APP_SECRET = 'test-secret'
-  process.env.VAULT_KEY = Buffer.alloc(32, 7).toString('base64')
 })
 
 describe('date (R33)', () => {
@@ -33,30 +31,12 @@ describe('date (R33)', () => {
   })
 })
 
-describe('password (R21)', () => {
-  it('대문자·소문자·숫자·기호를 모두 포함하고 길이를 지킨다', () => {
-    for (let i = 0; i < 200; i++) {
-      const pw = generatePassword(10)
-      expect(pw).toHaveLength(10)
-      expect(isValidPassword(pw, 10)).toBe(true)
-    }
-  })
-  it('혼동 문자(O,0,I,l,1)를 쓰지 않는다', () => {
-    for (let i = 0; i < 100; i++) {
-      expect(generatePassword(12)).not.toMatch(/[O0Il1]/)
-    }
-  })
-  it('길이는 최소 8로 보정된다', () => {
-    expect(generatePassword(4)).toHaveLength(8)
-  })
-})
-
 describe('mail render (§8)', () => {
   it('{치환자}를 값으로 바꾸고 모르는 치환자는 남긴다', () => {
     expect(renderTemplate('{이름} 님 {없는것}', { 이름: '홍길동' })).toBe('홍길동 님 {없는것}')
   })
   it('null 값은 빈 문자열', () => {
-    expect(renderTemplate('[{비밀번호}]', { 비밀번호: null })).toBe('[]')
+    expect(renderTemplate('[{접속링크}]', { 접속링크: null })).toBe('[]')
   })
   it('치환자 목록 추출', () => {
     expect(extractPlaceholders('{이름}{프로그램명}{이름}')).toEqual(['이름', '프로그램명'])
@@ -91,15 +71,15 @@ describe('token (§8)', () => {
 })
 
 describe('alertText (R22)', () => {
-  it('만료·미인수·변경완료 문구', () => {
-    expect(alertText({ category: '대여기간 만료', rentEnd: '2026-09-01', elapsedDays: 3, passwordChanged: false })).toBe(
-      '⚠ 대여기간 만료(2026-09-01, D+3) — 비밀번호 변경 필요(신규비밀번호 생성됨)',
+  it('만료·미인수·체크완료 문구', () => {
+    expect(alertText({ category: '대여기간 만료', rentEnd: '2026-09-01', elapsedDays: 3, checklistDone: false })).toBe(
+      '⚠ 대여기간 만료(2026-09-01, D+3) — 대화·메모리 삭제 후 팀에서 제거 필요',
     )
-    expect(alertText({ category: '인수기한 초과', rentEnd: null, elapsedDays: 0, passwordChanged: false })).toBe(
+    expect(alertText({ category: '인수기한 초과', rentEnd: null, elapsedDays: 0, checklistDone: false })).toBe(
       '⚠ 인수기한 초과 — 회수 필요',
     )
-    expect(alertText({ category: '대여기간 만료', rentEnd: '2026-09-01', elapsedDays: 3, passwordChanged: true })).toBe(
-      '비밀번호 변경 완료 — 회수 완료 처리 필요',
+    expect(alertText({ category: '대여기간 만료', rentEnd: '2026-09-01', elapsedDays: 3, checklistDone: true })).toBe(
+      '회수 체크리스트 완료 — 회수 완료 처리 필요',
     )
   })
 })
@@ -131,9 +111,9 @@ describe('계정 CSV 파싱 (§7-2)', () => {
   it('헤더 순서와 무관하게 읽고 날짜를 정규화한다', () => {
     const rows = parseAccountCsv(
       [
-        '계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA',
-        'GPT-001,GPT,운영,a@b.ac.kr,"pw,1",2026.09.01,2027-03-31,예,없음',
-        'CL-001,Claude,예비,c@d.ac.kr,pw2,,,false,',
+        '계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일',
+        'GPT-001,GPT,운영,a@b.ac.kr,https://t.example/g1,2026.09.01,2027-03-31',
+        'CL-001,Claude,예비,c@d.ac.kr,,,',
       ].join('\n'),
     )
     expect(rows).toHaveLength(2)
@@ -141,15 +121,26 @@ describe('계정 CSV 파싱 (§7-2)', () => {
       id: 'GPT-001',
       service: 'GPT',
       kind: '운영',
-      password: 'pw,1',
+      access_url: 'https://t.example/g1',
       activated_on: '2026-09-01',
       expires_on: '2027-03-31',
-      owns_registered_email: true,
     })
-    expect(rows[1]).toMatchObject({ service: 'Claude', kind: '예비', owns_registered_email: false })
+    expect(rows[1]).toMatchObject({ service: 'Claude', kind: '예비', access_url: '' })
   })
 
   it('따옴표 안의 쉼표를 지킨다', () => {
     expect(splitCsvLine('a,"b,c",d')).toEqual(['a', 'b,c', 'd'])
+  })
+})
+
+describe('접속 링크 정규화 (R14-2)', () => {
+  it('빈 값·공백은 미등록(null)', () => {
+    expect(normalizeUrl('')).toBeNull()
+    expect(normalizeUrl('   ')).toBeNull()
+    expect(normalizeUrl(undefined)).toBeNull()
+  })
+  it('http(s) 만 허용하고 앞뒤 공백을 지운다', () => {
+    expect(normalizeUrl('  https://team.example/seat/1  ')).toBe('https://team.example/seat/1')
+    expect(() => normalizeUrl('team.example/seat/1')).toThrow()
   })
 })

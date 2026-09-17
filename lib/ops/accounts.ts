@@ -1,118 +1,36 @@
 /**
- * 계정·금고 운영 (PRD R21·R23·R25, §7-2 계정)
+ * 계정(팀 좌석) 운영 (PRD R25, §7-2 계정)
+ * 좌석마다 고정 접속 링크(access_url)를 등록해 두고 배정안내 메일에 실어 보낸다(R16).
  */
 import 'server-only'
 import { db } from '@/lib/db'
-import { decrypt, encrypt } from '@/lib/crypto'
 import { todayKST } from '@/lib/date'
 import { assignedDaysOf } from '@/lib/assign'
-import { generatePassword } from '@/lib/password'
-import { getSettings } from '@/lib/settings'
 import { log, transitionAccount } from '@/lib/state'
 import type { Service } from '@/lib/types'
 
 /**
- * R21: 회수중 계정에 신규 비밀번호 생성.
- * 이미 「변경대기」이거나 해당 배정의 chk_password_changed 가 true 면 재생성하지 않는다(멱등).
+ * 접속 링크 정규화 (순수 함수).
+ * 트림 후 비어 있으면 null(= 미등록). 값이 있으면 http(s) 여야 한다.
  */
-export async function generateNewPassword(
-  accountId: string,
-  actor: string,
-  opts: { force?: boolean } = {},
-): Promise<boolean> {
-  const s = await getSettings()
-  const { data: sec } = await db()
-    .from('account_secrets')
-    .select('account_id, password_status, new_password_enc')
-    .eq('account_id', accountId)
-    .maybeSingle()
-  if (!sec) return false
-  if (!opts.force && sec.password_status === '변경대기') return false
-
-  const pw = generatePassword(s.password_length)
-  const { error } = await db()
-    .from('account_secrets')
-    .update({
-      new_password_enc: encrypt(pw),
-      password_status: '변경대기',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('account_id', accountId)
-  if (error) throw new Error(error.message)
-
-  await log(actor, 'account.password.generate', accountId, {})
-  return true
+export function normalizeUrl(v: string | null | undefined): string | null {
+  const t = (v ?? '').trim()
+  if (!t) return null
+  if (!/^https?:\/\//i.test(t)) throw new Error('접속 링크는 http:// 또는 https:// 로 시작해야 합니다.')
+  return t
 }
 
-/** R23: 「비밀번호 변경 완료」 — password ← new_password */
-export async function markPasswordChanged(accountId: string, actor: string): Promise<void> {
-  const { data: sec } = await db()
-    .from('account_secrets')
-    .select('new_password_enc, password_status')
-    .eq('account_id', accountId)
-    .single()
-  if (!sec) throw new Error(`계정 ${accountId} 금고 없음`)
-  if (!sec.new_password_enc) throw new Error('생성된 신규 비밀번호가 없습니다.')
-
+/** 좌석 접속 링크 등록·수정 (링크 값 자체는 로그에 남기지 않는다) */
+export async function setAccessUrl(accountId: string, url: string, actor: string): Promise<void> {
+  const next = normalizeUrl(url)
   const { error } = await db()
     .from('account_secrets')
-    .update({
-      password_enc: sec.new_password_enc,
-      new_password_enc: null,
-      password_status: '정상',
-      password_changed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('account_id', accountId)
+    .upsert(
+      { account_id: accountId, access_url: next, updated_at: new Date().toISOString() },
+      { onConflict: 'account_id' },
+    )
   if (error) throw new Error(error.message)
-
-  // 이 계정에 연결된 회수 대상 배정의 체크 항목 갱신.
-  // 미인수 건은 current_assignment_id 가 해제되어 있으므로(R19) 계정ID로도 찾는다.
-  const { data: acc } = await db()
-    .from('accounts')
-    .select('current_assignment_id')
-    .eq('id', accountId)
-    .single()
-  let targetId = acc?.current_assignment_id ?? null
-  if (!targetId) {
-    const { data: pending } = await db()
-      .from('assignments')
-      .select('id')
-      .eq('account_id', accountId)
-      .in('status', ['회수중', '인수기한초과'])
-      .order('updated_at', { ascending: false })
-      .limit(1)
-    targetId = pending?.[0]?.id ?? null
-  }
-  if (targetId) {
-    await db()
-      .from('assignments')
-      .update({ chk_password_changed: true, updated_at: new Date().toISOString() })
-      .eq('id', targetId)
-  }
-  await log(actor, 'account.password.applied', accountId, { assignment_id: targetId })
-}
-
-/** 금고 열람 (복호화 + 열람 로그) */
-export async function viewVault(accountId: string, actor: string) {
-  const { data: sec } = await db()
-    .from('account_secrets')
-    .select('*')
-    .eq('account_id', accountId)
-    .single()
-  if (!sec) throw new Error(`계정 ${accountId} 금고 없음`)
-  await log(actor, 'account.vault.view', accountId, {})
-  return {
-    account_id: sec.account_id,
-    login_email: sec.login_email as string | null,
-    password: decrypt(sec.password_enc),
-    new_password: decrypt(sec.new_password_enc),
-    password_status: sec.password_status as string,
-    password_changed_at: sec.password_changed_at as string | null,
-    owns_registered_email: sec.owns_registered_email as boolean,
-    two_fa: sec.two_fa as string | null,
-    note: sec.note as string | null,
-  }
+  await log(actor, 'account.access_url.set', accountId, { registered: next !== null })
 }
 
 export interface AccountImportRow {
@@ -120,14 +38,12 @@ export interface AccountImportRow {
   service: Service
   kind?: '운영' | '예비'
   login_email?: string
-  password?: string
+  access_url?: string
   activated_on?: string
   expires_on?: string
-  owns_registered_email?: boolean
-  two_fa?: string
 }
 
-/** CSV 가져오기 (계정 + 금고 동시 upsert) */
+/** CSV 가져오기 (계정 + 접속 정보 동시 upsert) */
 export async function importAccounts(rows: AccountImportRow[], actor: string): Promise<number> {
   let n = 0
   for (const r of rows) {
@@ -148,21 +64,19 @@ export async function importAccounts(rows: AccountImportRow[], actor: string): P
       {
         account_id: r.id,
         login_email: r.login_email ?? null,
-        password_enc: r.password ? encrypt(r.password) : null,
-        owns_registered_email: r.owns_registered_email ?? false,
-        two_fa: r.two_fa ?? null,
+        access_url: normalizeUrl(r.access_url),
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'account_id' },
     )
-    if (sErr) throw new Error(`${r.id} 금고: ${sErr.message}`)
+    if (sErr) throw new Error(`${r.id} 접속 정보: ${sErr.message}`)
     n += 1
   }
   await log(actor, 'account.import', null, { count: n })
   return n
 }
 
-/** CSV 텍스트 → 행 (헤더: 계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA) */
+/** CSV 텍스트 → 행 (헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일) */
 export function parseAccountCsv(text: string): AccountImportRow[] {
   const lines = text
     .split(/\r?\n/)
@@ -175,11 +89,9 @@ export function parseAccountCsv(text: string): AccountImportRow[] {
   const cService = idx('서비스')
   const cKind = idx('구분')
   const cEmail = idx('로그인이메일')
-  const cPw = idx('비밀번호')
+  const cUrl = idx('접속링크')
   const cAct = idx('활성화일')
   const cExp = idx('만료일')
-  const cOwn = idx('등록이메일소유')
-  const c2fa = idx('2FA')
   if (cId < 0 || cService < 0) throw new Error('CSV 헤더에 「계정ID」·「서비스」가 필요합니다.')
 
   const out: AccountImportRow[] = []
@@ -193,11 +105,9 @@ export function parseAccountCsv(text: string): AccountImportRow[] {
       service: svc === 'Claude' || svc === 'CL' ? 'Claude' : 'GPT',
       kind: (c[cKind] ?? '').trim() === '예비' ? '예비' : '운영',
       login_email: cEmail >= 0 ? c[cEmail]?.trim() : undefined,
-      password: cPw >= 0 ? c[cPw]?.trim() : undefined,
+      access_url: cUrl >= 0 ? c[cUrl]?.trim() : undefined,
       activated_on: cAct >= 0 ? normalizeDate(c[cAct]) : undefined,
       expires_on: cExp >= 0 ? normalizeDate(c[cExp]) : undefined,
-      owns_registered_email: cOwn >= 0 ? /^(true|Y|y|1|예|O|o)$/.test((c[cOwn] ?? '').trim()) : false,
-      two_fa: c2fa >= 0 ? c[c2fa]?.trim() : undefined,
     })
   }
   return out

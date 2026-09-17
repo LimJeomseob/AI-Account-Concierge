@@ -33,11 +33,8 @@ export const L = {
     note: '비고',
   },
   checklist: {
-    chk_delete_chats: '대화 삭제',
-    chk_delete_memory: '메모리 삭제',
-    chk_logout_all: '전체 로그아웃',
-    chk_history_review: '대화기록 점검',
-    chk_password_changed: '비밀번호 변경',
+    chk_delete_chats: '대화·메모리 삭제',
+    chk_team_removed: '팀에서 제거(접속 차단)',
   },
   account: {
     id: '계정ID',
@@ -51,11 +48,7 @@ export const L = {
     assigned_count: '배정횟수',
     alert: '알림',
     login_email: '로그인 이메일',
-    password: '비밀번호',
-    new_password: '신규 비밀번호',
-    password_status: '비밀번호 상태',
-    two_fa: '2FA',
-    owns_registered_email: '등록이메일 소유',
+    access_url: '접속 링크',
   },
   program: {
     id: '프로그램ID',
@@ -92,9 +85,10 @@ export const STATUS_BADGE: Record<string, string> = {
   // 프로그램 (시작전 → 진행중 → 완료)
   시작전: 'bg-amber-100 text-amber-800 border-amber-200',
   진행중: 'bg-green-100 text-green-700 border-green-200',
+  // 좌석 접속 링크
+  등록: 'bg-green-100 text-green-700 border-green-200',
+  미등록: 'bg-red-100 text-red-700 border-red-200',
   // 기타
-  정상: 'bg-green-100 text-green-700 border-green-200',
-  변경대기: 'bg-amber-100 text-amber-800 border-amber-200',
   접수: 'bg-blue-100 text-blue-700 border-blue-200',
   처리중: 'bg-amber-100 text-amber-800 border-amber-200',
   완료: 'bg-slate-100 text-slate-500 border-slate-200',
@@ -103,25 +97,20 @@ export const STATUS_BADGE: Record<string, string> = {
   failed: 'bg-red-100 text-red-700 border-red-200',
 }
 
-export const CHECKLIST_FIELDS = [
-  'chk_delete_chats',
-  'chk_delete_memory',
-  'chk_logout_all',
-  'chk_history_review',
-  'chk_password_changed',
-] as const
+/** 회수 체크리스트 (R24) — ① 대화·메모리 삭제 ② 팀에서 제거 */
+export const CHECKLIST_FIELDS = ['chk_delete_chats', 'chk_team_removed'] as const
 
 /** 서비스별 안내 문구 (PRD §8) */
 export const SERVICE_INFO = {
   GPT: {
-    name: 'ChatGPT Plus',
+    name: 'ChatGPT Team',
     loginUrl: 'https://chatgpt.com',
     optOut: '설정 > 데이터 제어 > "모두를 위한 모델 개선" 끄기',
     returnSteps:
       '설정 > 데이터 제어 > 모든 채팅 삭제, 개인 맞춤 설정 > 메모리 모두 삭제, 보안 > 모든 기기에서 로그아웃',
   },
   Claude: {
-    name: 'Claude Pro',
+    name: 'Claude Team',
     loginUrl: 'https://claude.ai',
     optOut: '설정 > 개인정보 > "Claude 개선에 도움" 끄기',
     returnSteps: '모든 대화 삭제, 메모리·프로젝트 삭제, 모든 기기 로그아웃',

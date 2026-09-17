@@ -9,8 +9,6 @@
 export interface Settings {
   ack_due_days: number
   account_expiry_alert_days: number
-  password_length: number
-  show_new_password_in_digest: boolean
   suspension_rate_warn: number
   admin_emails: string[]
   reply_to: string
@@ -31,8 +29,6 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   ack_due_days: 2,
   account_expiry_alert_days: 14,
-  password_length: 10,
-  show_new_password_in_digest: false,
   suspension_rate_warn: 5,
   admin_emails: [],
   reply_to: '',

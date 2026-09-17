@@ -4,7 +4,6 @@
  */
 import 'server-only'
 import { db } from '@/lib/db'
-import { decrypt } from '@/lib/crypto'
 import { formatKorean } from '@/lib/date'
 import { SERVICE_INFO } from '@/lib/labels'
 import { getSettings } from '@/lib/settings'
@@ -73,7 +72,7 @@ export async function queueIntakeMail(assignmentId: string): Promise<void> {
 
 /**
  * 배정안내 메일 (R16).
- * password_status 가 「변경대기」인 계정은 발송 보류(false 반환).
+ * 접속 링크가 등록되지 않은 좌석은 발송 보류(false 반환).
  */
 export async function queueAssignmentMail(assignmentId: string): Promise<boolean> {
   const s = await getSettings()
@@ -88,14 +87,14 @@ export async function queueAssignmentMail(assignmentId: string): Promise<boolean
 
   const { data: sec } = await db()
     .from('account_secrets')
-    .select('login_email, password_enc, password_status')
+    .select('login_email, access_url')
     .eq('account_id', a.account_id)
     .single()
   if (!sec) return false
-  if (sec.password_status === '변경대기') {
+  if (!sec.access_url) {
     await log('system', 'mail.assignment.hold', a.id, {
       account_id: a.account_id,
-      reason: '비밀번호 변경대기',
+      reason: '접속링크 미등록',
     })
     return false
   }
@@ -109,7 +108,7 @@ export async function queueAssignmentMail(assignmentId: string): Promise<boolean
     로그인URL: info.loginUrl,
     계정ID: a.account_id,
     계정명: sec.login_email ?? '',
-    비밀번호: decrypt(sec.password_enc) ?? '',
+    접속링크: sec.access_url,
     대여시작일: formatKorean(a.rent_start),
     대여종료일: formatKorean(a.rent_end),
     인수확인링크: ackUrl(base, a.id),
@@ -153,7 +152,7 @@ export async function previewAssignmentMail(
     로그인URL: info?.loginUrl ?? '',
     계정ID: a.account_id ?? '(미배정)',
     계정명: '(발송 시 삽입)',
-    비밀번호: '(발송 시 삽입)',
+    접속링크: '(발송 시 삽입)',
     대여시작일: formatKorean(a.rent_start),
     대여종료일: formatKorean(a.rent_end),
     인수확인링크: ackUrl(base, a.id),

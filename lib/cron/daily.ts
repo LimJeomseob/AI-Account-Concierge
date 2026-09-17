@@ -9,7 +9,6 @@ import { getSettings } from '@/lib/settings'
 import { rebuildAlerts, listAlerts } from '@/lib/alerts'
 import { dispatchQueue } from '@/lib/mail/dispatch'
 import { queueAdminMail } from '@/lib/mail/queue'
-import { decrypt } from '@/lib/crypto'
 import { log } from '@/lib/state'
 import { autoAssignAll, endExpiredRentals, expireUnacknowledged } from '@/lib/ops/assignments'
 import { processExpiries, refreshAccountStats } from '@/lib/ops/accounts'
@@ -38,7 +37,7 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
   // 2. 미인수 자동 취소 (R19)
   const ackOverdue = await expireUnacknowledged(s.ack_due_days, today)
 
-  // 3. 대여 종료 → 회수중 + 신규 비밀번호 (R20·R21)
+  // 3. 대여 종료 → 회수중 (R20). 접근 차단은 관리자 회수 체크리스트(R24)
   const rentEnded = await endExpiredRentals(today)
 
   // 3-1. alerts·accounts.alert 재생성 (R22)
@@ -143,17 +142,9 @@ async function sendDigest(input: {
   if (alerts.length > 0) {
     lines.push('', '■ 회수 대상')
     for (const a of alerts) {
-      let line = `  - [${a.category}] ${a.account_id ?? '-'} (${a.login_email ?? '-'}) / ${a.name} / ${a.program_name} / 종료 ${a.rent_end ?? '-'} (D+${a.elapsed_days}) — ${a.guide}`
-      if (s.show_new_password_in_digest && a.account_id) {
-        const { data: sec } = await db()
-          .from('account_secrets')
-          .select('new_password_enc')
-          .eq('account_id', a.account_id)
-          .maybeSingle()
-        const pw = decrypt(sec?.new_password_enc ?? null)
-        if (pw) line += ` / 신규 비밀번호: ${pw}`
-      }
-      lines.push(line)
+      lines.push(
+        `  - [${a.category}] ${a.account_id ?? '-'} (${a.login_email ?? '-'}) / ${a.name} / ${a.program_name} / 종료 ${a.rent_end ?? '-'} (D+${a.elapsed_days}) — ${a.guide}`,
+      )
     }
   }
 

@@ -2,7 +2,7 @@
  * 메일 발송 (PRD §4-1 mail_queue, R? 일일 작업 5단계)
  * - Resend 일일 한도(Free 100통)를 넘지 않도록 대기열에서 순차 발송
  * - 실패는 다음 일일 작업에서 재시도, 5회 초과 시 failed
- * - 발송 완료 시 본문 삭제(§13: 비밀번호 평문 잔존 방지)
+ * - 발송 완료 시 본문 삭제(§13: 접속 링크 잔존 방지)
  */
 import 'server-only'
 import { Resend } from 'resend'
@@ -57,7 +57,7 @@ export async function dispatchQueue(limit = DEFAULT_BATCH): Promise<DispatchResu
             .update({
               status: 'sent',
               sent_at: new Date().toISOString(),
-              // 본문(비밀번호 포함 가능)은 발송 후 삭제
+              // 본문(접속 링크 포함 가능)은 발송 후 삭제
               body_text: null,
               body_html: null,
               last_error: null,

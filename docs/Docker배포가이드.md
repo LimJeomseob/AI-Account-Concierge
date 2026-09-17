@@ -157,7 +157,6 @@ cp docker/.env.docker.example docker/.env
 |---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | `cd ../supabase-project && sh run.sh secrets` 의 **`SUPABASE_SECRET_KEY`** (이름이 다름에 주의) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 같은 출력의 **`SUPABASE_PUBLISHABLE_KEY`** |
-| `VAULT_KEY` | 터미널에서 `openssl rand -base64 32` |
 | `APP_SECRET` | `openssl rand -hex 32` |
 | `CRON_SECRET` | `openssl rand -hex 32` |
 | `INITIAL_ADMIN_EMAIL` | 관리자로 쓸 본인 Gmail |
@@ -300,7 +299,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://api.gnu-ai.kr
 DOMAIN=gnu-ai.kr
 SUPABASE_URL=http://kong:8000
 ```
-키·비밀 값은 A-6 표와 같은 방법으로. **VAULT_KEY 는 로컬과 다른 새 값**을 만들고, 기관 비밀번호 관리소에 보관합니다(잃으면 계정 금고 복호화 불가).
+키·비밀 값은 A-6 표와 같은 방법으로. **APP_SECRET·CRON_SECRET 은 로컬과 다른 새 값**을 만들고, 기관 비밀번호 관리소에 보관합니다.
 `RESEND_API_KEY` 는 실제 값을 넣습니다(도메인 인증은 `docs/배포체크리스트.md` 3번).
 
 ### B-5. 앱 + HTTPS 띄우기
@@ -412,7 +411,7 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 | 파일 | 내용 |
 |---|---|
 | `supabase-project/.env` | Supabase 스택 전용. `POSTGRES_PASSWORD`, `JWT_SECRET`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `DASHBOARD_*`, `SITE_URL`, `API_EXTERNAL_URL`, `SUPABASE_PUBLIC_URL`, `KONG_HTTP_PORT`, `GOOGLE_*` |
-| `AI-Account-Concierge/docker/.env` | 앱 스택 전용. `NEXT_PUBLIC_*`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VAULT_KEY`, `APP_SECRET`, `CRON_SECRET`, `RESEND_API_KEY`, `DOMAIN` |
+| `AI-Account-Concierge/docker/.env` | 앱 스택 전용. `NEXT_PUBLIC_*`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_SECRET`, `CRON_SECRET`, `RESEND_API_KEY`, `DOMAIN` |
 | `AI-Account-Concierge/.env.local` | 내 PC 에서 시드·가져오기 스크립트를 돌릴 때만. `docker/.env` 복사본에서 `SUPABASE_URL` 만 localhost 로 |
 
 같은 키를 다른 이름으로 두 번 쓰는 곳:
@@ -422,8 +421,8 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 ### 비밀 값 보관 규칙
 
 - `.env` 파일은 절대 git 에 올리지 않습니다(`.gitignore` 에 이미 제외돼 있음).
-- `VAULT_KEY`, `APP_SECRET`, `CRON_SECRET`, `supabase-project/.env` 전체를 기관 비밀번호 관리소에 보관합니다.
-- `VAULT_KEY` 를 바꾸면 기존에 저장된 계정 비밀번호를 전부 읽을 수 없게 됩니다. **바꾸지 마세요.**
+- `APP_SECRET`, `CRON_SECRET`, `supabase-project/.env` 전체를 기관 비밀번호 관리소에 보관합니다.
+- `APP_SECRET` 을 바꾸면 이미 발송된 인수 확인·장애 신고 링크가 모두 무효가 됩니다. **바꾸지 마세요.**
 
 ### 이 문서로 검증한 것 / 못 한 것 (Fact)
 

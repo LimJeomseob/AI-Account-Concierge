@@ -6,7 +6,7 @@
  *
  * 주의
  *  - 실제 DB에 쓰고 지운다. **반드시 시범/스테이징 프로젝트에서 실행할 것.**
- *  - 필요한 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VAULT_KEY, APP_SECRET
+ *  - 필요한 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_SECRET
  *  - RESEND_API_KEY 는 이 스위트 안에서 강제로 비운다. 메일은 대기열에만 쌓이고 실제로 나가지 않는다.
  *  - 모든 테스트 데이터는 `ZTEST` 접두를 쓰고 마지막에 삭제한다.
  */
@@ -17,7 +17,6 @@ const enabled =
   process.env.ACCEPTANCE_CONFIRM === 'yes' &&
   !!process.env.SUPABASE_URL &&
   !!process.env.SUPABASE_SERVICE_ROLE_KEY &&
-  !!process.env.VAULT_KEY &&
   !!process.env.APP_SECRET
 
 // 실제 발송 차단 (대기열까지만 확인한다)
@@ -29,13 +28,13 @@ const PROG_NOPERIOD = `${RUN}-P2`
 const ACC_GPT = `${RUN}-G1`
 const ACC_CL = `${RUN}-C1`
 const ACC_SPARE = `${RUN}-C9`
+const ACC_NOLINK = `${RUN}-G9` // 접속 링크 미등록 좌석 (배정 풀 제외 확인용)
 const mail = (n: number) => `${RUN.toLowerCase()}-${n}@example.test`
 
 // 실제 모듈은 enabled 일 때만 불러온다(환경변수 없이 import 하면 db() 가 던진다).
 type Mods = {
   db: typeof import('@/lib/db')
   date: typeof import('@/lib/date')
-  crypto: typeof import('@/lib/crypto')
   apply: typeof import('@/lib/ops/apply')
   assignments: typeof import('@/lib/ops/assignments')
   accounts: typeof import('@/lib/ops/accounts')
@@ -54,7 +53,6 @@ async function load(): Promise<Mods> {
   return {
     db: await import('@/lib/db'),
     date: await import('@/lib/date'),
-    crypto: await import('@/lib/crypto'),
     apply: await import('@/lib/ops/apply'),
     assignments: await import('@/lib/ops/assignments'),
     accounts: await import('@/lib/ops/accounts'),
@@ -110,16 +108,20 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
       { id: ACC_GPT, service: 'GPT', kind: '운영', activated_on: today, expires_on: '2099-12-31', status: '가용' },
       { id: ACC_CL, service: 'Claude', kind: '운영', activated_on: today, expires_on: '2099-12-31', status: '가용' },
       { id: ACC_SPARE, service: 'Claude', kind: '예비', activated_on: today, expires_on: '2099-12-31', status: '가용' },
+      { id: ACC_NOLINK, service: 'GPT', kind: '운영', activated_on: today, expires_on: '2099-12-31', status: '가용' },
     ])
     await db()
       .from('account_secrets')
       .insert(
-        [ACC_GPT, ACC_CL, ACC_SPARE].map((id) => ({
-          account_id: id,
-          login_email: `${id.toLowerCase()}@example.test`,
-          password_enc: M.crypto.encrypt(`Init!${id}`),
-          password_status: '정상',
-        })),
+        [
+          ...[ACC_GPT, ACC_CL, ACC_SPARE].map((id) => ({
+            account_id: id,
+            login_email: `${id.toLowerCase()}@example.test`,
+            access_url: `https://team.example/${id.toLowerCase()}`,
+          })),
+          // 접속 링크가 없는 좌석 (R14-2: 배정 풀에서 빠져야 한다)
+          { account_id: ACC_NOLINK, login_email: `${ACC_NOLINK.toLowerCase()}@example.test`, access_url: null },
+        ],
       )
   }, 60_000)
 
@@ -185,7 +187,14 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(count).toBe(1)
   })
 
-  it('T3 — 가용 GPT 1·Claude 1 에 3명 승인 시 신청 순 2명 배정, 1명 대기, 메일에 비밀번호 포함', async () => {
+  it('T3-0 — 접속 링크가 없는 좌석은 배정 풀에서 빠진다 (R14-2)', async () => {
+    const pool = await M.assignments.availablePool()
+    const ids = pool.map((a) => a.id)
+    expect(ids).toContain(ACC_GPT)
+    expect(ids).not.toContain(ACC_NOLINK)
+  })
+
+  it('T3 — 가용 GPT 1·Claude 1 에 3명 승인 시 신청 순 2명 배정, 1명 대기, 메일에 접속 링크 포함', async () => {
     const second = await M.apply.applyForAccount({
       programId: PROG_OPEN,
       name: '테스트2',
@@ -227,8 +236,8 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
       .eq('kind', 'assignment')
       .in('ref_id', [ids.a1, ids.a2])
     expect(mails).toHaveLength(2)
-    expect(mails?.[0]?.body_text).toContain('비밀번호')
-    expect(mails?.[0]?.body_text).toContain('Init!')
+    expect(mails?.[0]?.body_text).toContain('접속 링크')
+    expect(mails?.[0]?.body_text).toContain('https://team.example/')
   })
 
   it('T4 — 인수 링크는 통과, 위조 토큰은 거부', async () => {
@@ -241,7 +250,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(data?.acknowledged_at).toBeTruthy()
   })
 
-  it('T5 — 발송 후 인수기한 경과 건은 인수기한초과 + 계정 회수중 + 신규 비밀번호 + alerts', async () => {
+  it('T5 — 발송 후 인수기한 경과 건은 인수기한초과 + 계정 회수중 + alerts', async () => {
     const past = new Date()
     past.setUTCDate(past.getUTCDate() - 5)
     await M.db.db().from('assignments').update({ notified_at: past.toISOString() }).eq('id', ids.a2)
@@ -256,22 +265,13 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     const { data: acc } = await M.db.db().from('accounts').select('status').eq('id', ACC_CL).single()
     expect(acc?.status).toBe('회수중')
 
-    const { data: sec } = await M.db
-      .db()
-      .from('account_secrets')
-      .select('password_status, new_password_enc')
-      .eq('account_id', ACC_CL)
-      .single()
-    expect(sec?.password_status).toBe('변경대기')
-    expect(M.crypto.decrypt(sec?.new_password_enc ?? null)).toBeTruthy()
-
     await M.alerts.rebuildAlerts(today)
     const { data: alertRows } = await M.db.db().from('alerts').select('*').eq('assignment_id', ids.a2)
     expect(alertRows).toHaveLength(1)
     expect(alertRows?.[0].category).toBe('인수기한 초과')
   })
 
-  it('T6 — 대여 종료 → 비밀번호 변경 완료 → 5개 체크 → 회수 완료 → 대기자 자동 재배정', async () => {
+  it('T6 — 대여 종료 → 회수 체크 2개 → 회수 완료 → 대기자 자동 재배정', async () => {
     const yesterday = M.date.addDays(today, -1)
     await M.db.db().from('assignments').update({ rent_end: yesterday }).eq('id', ids.a1)
 
@@ -281,23 +281,11 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     const { data: acc1 } = await M.db.db().from('accounts').select('status').eq('id', ACC_GPT).single()
     expect(acc1?.status).toBe('회수중')
 
-    await M.accounts.markPasswordChanged(ACC_GPT, 'acceptance@test')
-    const { data: sec } = await M.db
-      .db()
-      .from('account_secrets')
-      .select('password_status, new_password_enc, password_changed_at')
-      .eq('account_id', ACC_GPT)
-      .single()
-    expect(sec?.password_status).toBe('정상')
-    expect(sec?.new_password_enc).toBeNull()
-    expect(sec?.password_changed_at).toBeTruthy()
-
-    // 체크 5개를 다 채우기 전에는 회수 완료가 막힌다
+    // 체크 2개를 다 채우기 전에는 회수 완료가 막힌다
     await expect(M.assignments.completeReturn(ids.a1, 'acceptance@test', today)).rejects.toThrow()
-
-    for (const f of ['chk_delete_chats', 'chk_delete_memory', 'chk_logout_all', 'chk_history_review'] as const) {
-      await M.assignments.setChecklist(ids.a1, f, true, 'acceptance@test')
-    }
+    await M.assignments.setChecklist(ids.a1, 'chk_delete_chats', true, 'acceptance@test')
+    await expect(M.assignments.completeReturn(ids.a1, 'acceptance@test', today)).rejects.toThrow()
+    await M.assignments.setChecklist(ids.a1, 'chk_team_removed', true, 'acceptance@test')
     const { reassigned } = await M.assignments.completeReturn(ids.a1, 'acceptance@test', today)
 
     const { data: done } = await M.db.db().from('assignments').select('status, returned_at').eq('id', ids.a1).single()
@@ -308,10 +296,6 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     const { data: a3 } = await M.db.db().from('assignments').select('status, account_id').eq('id', ids.a3).single()
     expect(reassigned.length).toBeGreaterThanOrEqual(0)
     expect(['승인', '배정']).toContain(a3?.status)
-
-    // pwDone 이면 신규 비밀번호를 재생성하지 않는다
-    const regenerated = await M.accounts.generateNewPassword(ACC_GPT, 'acceptance@test')
-    expect(typeof regenerated).toBe('boolean')
   })
 
   it('T7 — 장애(정지) 신고 → 계정 정지 + 관리자 메일 → 예비 계정으로 대체 배정', async () => {

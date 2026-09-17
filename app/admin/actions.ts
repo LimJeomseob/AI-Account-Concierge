@@ -24,12 +24,7 @@ import {
   resendAssignmentMail,
   setChecklist,
 } from '@/lib/ops/assignments'
-import {
-  generateNewPassword,
-  importAccounts,
-  markPasswordChanged,
-  parseAccountCsv,
-} from '@/lib/ops/accounts'
+import { importAccounts, parseAccountCsv, setAccessUrl } from '@/lib/ops/accounts'
 import { replaceAccount } from '@/lib/ops/incidents'
 import { purgeUsers } from '@/lib/ops/privacy'
 import { runDaily } from '@/lib/cron/daily'
@@ -77,13 +72,6 @@ export async function checklistAction(fd: FormData) {
   const field = str(fd, 'field') as (typeof CHECKLIST_FIELDS)[number]
   await setChecklist(str(fd, 'id'), field, bool(fd, 'value'), actor)
   revalidatePath('/admin/assignments')
-}
-
-export async function passwordAppliedAction(fd: FormData) {
-  const actor = await requireAdminAction()
-  await markPasswordChanged(str(fd, 'accountId'), actor)
-  revalidatePath('/admin/assignments')
-  revalidatePath('/admin/accounts')
 }
 
 export async function completeReturnAction(fd: FormData) {
@@ -188,17 +176,15 @@ export async function accountSaveAction(fd: FormData) {
   const actor = await requireAdminAction()
   const rows = parseAccountCsv(
     [
-      '계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA',
+      '계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일',
       [
         str(fd, 'id'),
         str(fd, 'service'),
         str(fd, 'kind'),
         str(fd, 'login_email'),
-        str(fd, 'password'),
+        str(fd, 'access_url'),
         str(fd, 'activated_on'),
         str(fd, 'expires_on'),
-        bool(fd, 'owns_registered_email') ? 'true' : 'false',
-        str(fd, 'two_fa'),
       ]
         .map((v) => `"${v.replace(/"/g, '""')}"`)
         .join(','),
@@ -216,10 +202,19 @@ export async function accountImportAction(fd: FormData) {
   revalidatePath('/admin/accounts')
 }
 
-export async function accountGeneratePasswordAction(fd: FormData) {
+/** 좌석 접속 링크 등록·수정 (R14-2) — 잘못된 형식은 예외 대신 메시지로 돌려준다 */
+export async function accountAccessUrlAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
   const actor = await requireAdminAction()
-  for (const id of ids(fd)) await generateNewPassword(id, actor, { force: true })
+  const id = str(fd, 'id')
+  if (!id) return { ok: false, msg: '계정을 선택해 주세요.' }
+  try {
+    await setAccessUrl(id, str(fd, 'access_url'), actor)
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message }
+  }
   revalidatePath('/admin/accounts')
+  revalidatePath('/admin/dashboard')
+  return { ok: true, msg: str(fd, 'access_url').trim() ? `${id}: 접속 링크를 저장했습니다.` : `${id}: 접속 링크를 비웠습니다.` }
 }
 
 /**
@@ -307,7 +302,6 @@ export async function settingsSaveAction(fd: FormData) {
   const numeric: Array<keyof Settings> = [
     'ack_due_days',
     'account_expiry_alert_days',
-    'password_length',
     'suspension_rate_warn',
     'target_headcount',
   ]
@@ -325,7 +319,6 @@ export async function settingsSaveAction(fd: FormData) {
   ]
   for (const k of numeric) await setSetting(k, num(fd, k))
   for (const k of text) await setSetting(k, str(fd, k))
-  await setSetting('show_new_password_in_digest', bool(fd, 'show_new_password_in_digest'))
   await setSetting('auto_assign_on_approve', bool(fd, 'auto_assign_on_approve'))
   await setSetting(
     'admin_emails',

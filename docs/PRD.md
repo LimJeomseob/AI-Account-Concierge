@@ -11,11 +11,11 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목적 | ChatGPT Plus 50 + Claude Pro 50 계정(각 6개월)을 하반기 교육 프로그램 참여자에게 **회전 대여**하고, 프로그램별 사용 인원(연인원 600 목표)을 실적으로 관리 |
+| 목적 | ChatGPT Team 50 + Claude Team 50 좌석(각 6개월)을 하반기 교육 프로그램 참여자에게 **회전 대여**하고, 프로그램별 사용 인원(연인원 600 목표)을 실적으로 관리 |
 | 대체 대상 | Google Sheets + Apps Script 구현본(Code.gs ~1,200행, 모의 검증 완료). 기능·규칙은 그대로 계승, 구현 기술만 교체 |
 | 스택(확정) | Next.js(App Router, TypeScript, Tailwind, shadcn/ui) + Supabase(Postgres, Auth, 서울 리전) + Resend(메일) + Vercel(호스팅·Cron) |
 | 관리자 인증(확정) | Google 로그인 + 허용 이메일 목록 |
-| 계정 금고(확정) | DB에 암호화 저장(시트 의존 제거) |
+| 계정 모델(확정) | 팀 계정(ChatGPT Team·Claude Team, 관리자 계정 gnuxai.ac.kr) 좌석 대여. 좌석별 **고정 접속 링크**를 안내하고 비밀번호는 다루지 않음 |
 | 신청 페이지(확정) | 기존 GitHub Pages에 HTML 블록 삽입, 새 백엔드 API 호출(CORS 허용) |
 | 운영 주체 | 운영관리자(소수, 동등 권한). 프로그램 담당자 역할 없음 |
 | 사용자 규모 | 계정 100개, 프로그램 24개, 배정 수백~수천 건, 관리자 1~5명 |
@@ -28,7 +28,7 @@
 - 계획안: 2026학년도 AI 유료계정 지원 — 모노플로우 신규계정 100개(GPT 50·Claude 50), 6개월, 예산 29,940,000원(299,400원×100계정). 실적 = 프로그램별 사용 인원(인수 확인 기준).
 - 현재 Apps Script 버전이 완성되어 있으나 시트·스크립트·트리거·배포 관리가 운영자에게 어려워 웹 앱으로 재구축.
 - OpenAI·Anthropic 소비자 약관은 계정 공유를 금지함. 시스템은 「1계정 1사용자, 순차 대여」 원칙으로 설계하되 약관 리스크는 사업 주체가 인지한 상태(설계 전제).
-- ChatGPT·Claude 비밀번호를 바꾸는 공개 API는 없음(Claude.ai는 비밀번호 없는 로그인). 시스템은 비밀번호 **생성·기록·알림·추적**을 담당하고, 서비스 적용은 관리자 수작업.
+- ChatGPT Team·Claude Team 좌석을 팀 콘솔에서 발급·회수한다. 좌석에는 관리자가 등록한 **고정 접속 링크**가 있고, 회수 시 관리자가 팀 콘솔에서 좌석을 제거해 접근을 차단한다. 좌석 추가·제거를 자동화하는 공개 API는 없으므로 시스템은 **안내·알림·체크·추적**만 담당하고 콘솔 작업은 관리자 수작업.
 
 ### 1-2. 목표
 1. 신청 → 승인 → 자동 배정 → 메일 안내 → 인수 확인 → 종료 → 회수 → 재배정의 전 과정을 관리자 화면 하나에서 처리.
@@ -37,7 +37,7 @@
 4. 개인정보 동의·보유기간·파기까지 시스템 안에서 완결.
 
 ### 1-3. 범위 밖 (Non-goals)
-- ChatGPT/Claude 계정의 비밀번호 자동 변경·자동 로그아웃(불가).
+- ChatGPT Team/Claude Team 좌석의 자동 발급·자동 제거(불가, 관리자 수작업).
 - 윤리가이드라인 시청 여부의 기술적 검증(영상 클릭 + 자기 확인으로 갈음, 확정).
 - 프로그램 담당자·부서별 권한 분리(운영관리자 단일 역할, 확정).
 - 다부서·다캠퍼스 확장, SSO 연동(향후).
@@ -49,11 +49,11 @@
 | 사용자 | 접점 | 하는 일 |
 |---|---|---|
 | 참여자(교원·직원·학생·지역민) | GitHub Pages 신청 블록, 메일 링크 | 윤리가이드라인 시청 → 신청 → 안내 메일 수신 → 2일 내 인수 확인 → 사용 → 장애 신고(필요 시) |
-| 운영관리자 | `/admin` (Google 로그인) | 프로그램·계정 등록, 승인, 회수 체크리스트, 비밀번호 적용, 장애 대체, 실적 조회, 설정 |
+| 운영관리자 | `/admin` (Google 로그인) | 프로그램·좌석 등록(접속 링크), 승인, 회수 체크리스트(대화·메모리 삭제 → 팀에서 제거), 장애 대체, 실적 조회, 설정 |
 | 시스템(Cron) | Vercel Cron → API | 매일 09:00 KST 일일 작업, 매월 1일 스냅샷 |
 
 핵심 흐름(사용자 확정):
-`프로그램 사전 등록(관리자) → 윤리가이드라인 시청(신청 전, 클릭 시 새 창 자동 연결) → 신청(드롭다운에서 프로그램 선택) → 관리자 승인 시 자동 배정 + 안내 메일 자동 발송(계정명·비밀번호 본문 삽입) → 참여자 인수 확인(2일) → 대여 종료 시 신규 비밀번호 자동 생성 + 알림 → 관리자 회수 처리 → 대기자 자동 재배정`
+`프로그램 사전 등록(관리자) → 윤리가이드라인 시청(신청 전, 클릭 시 새 창 자동 연결) → 신청(드롭다운에서 프로그램 선택) → 관리자 승인 시 자동 배정 + 안내 메일 자동 발송(계정명·접속 링크 본문 삽입) → 참여자 인수 확인(2일) → 대여 종료 시 회수중 전환 + 알림 → 관리자 회수 처리(대화·메모리 삭제 → 팀에서 제거) → 대기자 자동 재배정`
 
 ---
 
@@ -73,7 +73,7 @@
 | 프론트/서버 | Next.js App Router + TS + Tailwind + shadcn/ui (사용자 `nextjs-init` 스킬로 스캐폴딩) | — |
 | DB | Supabase Postgres, 리전 `ap-northeast-2`(서울) | Free: 500MB, 1주 비활동 시 일시정지, 백업 없음 / Pro $25/월~: 일일 백업 7일, 일시정지 없음 |
 | 인증 | Supabase Auth Google Provider + `admins` 허용 목록 | — |
-| DB 접근 | 서버(Server Actions·Route Handlers)에서 service role 키로만 접근. 브라우저에서 Supabase 직접 호출 없음, RLS는 「anon/authenticated 전부 거부」로 잠금 | 금고 노출 방지 단순화 (제안, High) |
+| DB 접근 | 서버(Server Actions·Route Handlers)에서 service role 키로만 접근. 브라우저에서 Supabase 직접 호출 없음, RLS는 「anon/authenticated 전부 거부」로 잠금 | 좌석 접속 정보 노출 방지 단순화 (제안, High) |
 | 메일 | Resend, 발신 도메인 인증 필요 | Free: 3,000통/월·100통/일·도메인 3개 / Pro $20/월: 50,000통/월, 일일 한도 없음 |
 | 스케줄 | Vercel Cron(`vercel.json`) | Hobby: 하루 1회, 실행 시각 ±59분 / Pro: 분 단위 |
 | 호스팅 | Vercel | Hobby 플랜은 비상업·개인 용도 조건. 대학 사업 적용 가능 여부는 별도 확인 필요(§13) |
@@ -91,8 +91,6 @@
 |---|---|---|
 | ack_due_days | 2 | 안내 발송 후 인수 확인 기한(일). 초과 시 자동 취소 |
 | account_expiry_alert_days | 14 | 계정 구독 만료 D-N 알림 |
-| password_length | 10 | 자동 생성 비밀번호 길이(영문 대소문자+숫자+기호) |
-| show_new_password_in_digest | false | 점검 메일에 신규 비밀번호 표시 여부 |
 | suspension_rate_warn | 5 | 정지율(%) 경고 임계값 |
 | admin_emails | [] | 점검 메일 수신 관리자(JSON 배열) |
 | reply_to | (공용 메일) | 참여자 회신 주소 |
@@ -113,9 +111,9 @@
 **accounts** — 대여용 계정(공개 가능한 메타)
 `id text PK`(예 GPT-001, CL-001), `service`(GPT|Claude), `kind`(운영|예비), `activated_on date`, `expires_on date`, `status`(가용|배정|회수중|정지|만료), `current_assignment_id`, `assigned_days int default 0`, `assigned_count int default 0`, `note`, `alert text`(일일 작업이 갱신), `updated_at`
 
-**account_secrets** — 계정 금고(서버 전용, 암호화)
-`account_id PK FK`, `login_email`, `password_enc`, `new_password_enc`, `password_status`(정상|변경대기), `password_changed_at`, `owns_registered_email bool`, `two_fa text`, `note`, `updated_at`
-- `*_enc`는 AES-256-GCM(키 = 환경변수 `VAULT_KEY`, 32바이트 base64)으로 애플리케이션 계층에서 암호화. 복호화는 서버에서만, 관리자 화면에서 「보기」 클릭 시 복호화 + `logs`에 열람 기록 (제안, High).
+**account_secrets** — 좌석 접속 정보(서버 전용)
+`account_id PK FK`, `login_email`, `access_url`(좌석 고정 접속 링크 — 비어 있으면 배정 제외), `note`, `updated_at`
+- 서버 전용 테이블(RLS 전면 차단). 접속 링크는 브라우저 번들·로그에 남기지 않고, 메일 본문은 발송 완료 시 삭제한다.
 
 **programs**
 `id text PK`(P26-01…), `name text unique`, `target`(교원|직원|학생|지역민|혼합), `mode`(고정기간|배정일기준), `days int`, `start_on date`, `end_on date`, `cap int default 0`(0=무제한), `status`(시작전|진행중|완료 — 모든 전환은 관리자 드롭다운 수동), `note`, `created_at`
@@ -125,7 +123,7 @@
 `id text PK`(U-0001…), `name`, `affiliation`, `type`(교원|직원|학생|지역민), `email unique(lower)`, `phone`, `has_paid bool`, `privacy_consented_at`, `first_applied_at`, `purged_at`
 
 **assignments** — 신청/배정 1건
-`id text PK`(A260904-0001: A+YYMMDD+일련 4자리), `program_id FK`, `user_id FK`, `name`, `email`(파기 시 익명화 대상 스냅샷), `service_wish`(GPT|Claude|무관), `account_id FK null`, `service`, `status`(§5), `applied_at`, `edu_watched_at`, `approved_on`, `approved_by`, `assigned_on`, `rent_start`, `rent_end`, `notified_at`, `acknowledged_at`, `returned_at`, `chk_delete_chats bool`, `chk_delete_memory bool`, `chk_logout_all bool`, `chk_history_review bool`, `chk_password_changed bool`, `note`, `updated_at`
+`id text PK`(A260904-0001: A+YYMMDD+일련 4자리), `program_id FK`, `user_id FK`, `name`, `email`(파기 시 익명화 대상 스냅샷), `service_wish`(GPT|Claude|무관), `account_id FK null`, `service`, `status`(§5), `applied_at`, `edu_watched_at`, `approved_on`, `approved_by`, `assigned_on`, `rent_start`, `rent_end`, `notified_at`, `acknowledged_at`, `returned_at`, `chk_delete_chats bool`(대화·메모리 삭제), `chk_team_removed bool`(팀에서 제거), `note`, `updated_at`
 
 **incidents** — 장애
 `id serial`, `account_id FK`, `assignment_id FK null`, `type`(정지|로그인불가|기타), `symptom`, `reporter`, `reported_at`, `action`, `replacement_account_id`, `status`(접수|처리중|완료), `note`
@@ -139,7 +137,7 @@
 
 **report_snapshots** — `id, month text(YYYY-MM), generated_at, metrics jsonb, csv_program text, csv_summary text`
 
-**alerts(뷰)** — 일일 작업 시점에 계산되는 「회수 대상」 목록: 구분(대여기간 만료|인수기한 초과), 계정ID, 로그인이메일, 배정ID, 이름, 프로그램, 대여종료일, 경과일, 비밀번호상태, 조치 안내. 테이블로 구체화(`alerts`)하여 일일 작업이 전체 재생성 (제안, High).
+**alerts(뷰)** — 일일 작업 시점에 계산되는 「회수 대상」 목록: 구분(대여기간 만료|인수기한 초과), 계정ID, 로그인이메일, 배정ID, 이름, 프로그램, 대여종료일, 경과일, 조치 안내. 테이블로 구체화(`alerts`)하여 일일 작업이 전체 재생성 (제안, High).
 
 ### 4-2. 제약·인덱스
 - `assignments`: (`program_id`, `email`) 활성 상태(신청·승인·배정·사용중·회수중·회수완료) 중복 금지 — 부분 유니크 인덱스.
@@ -158,7 +156,7 @@
 | 승인 | 관리자 승인 | 자동 배정 성공 → 배정 / 가용 계정 없음·상한 초과 → 승인 유지(대기) |
 | 배정 | 계정 배정 + 안내 메일 발송(또는 대기열 등록) | 인수 확인 → 사용중 / 발송 후 `ack_due_days` 경과 → 인수기한초과 |
 | 사용중 | 인수 확인 | 대여종료일 도래(일일 작업) → 회수중 / 장애 대체 시 새 배정으로 이관 |
-| 회수중 | 종료일 도래 / 미인수 취소 / 관리자 수동 회수 | 5개 체크 완료 + 「회수 완료」 → 회수완료 |
+| 회수중 | 종료일 도래 / 미인수 취소 / 관리자 수동 회수 | 2개 체크 완료 + 「회수 완료」 → 회수완료 |
 | 회수완료 · 반려 · 취소 · 인수기한초과 | 종결 | — |
 
 ### 5-2. 계정(accounts.status)
@@ -166,12 +164,12 @@
 |---|---|
 | 가용 | 배정 가능(운영 구분, 만료일 검사 통과 시) |
 | 배정 | 배정·사용중 건에 연결 |
-| 회수중 | 종료·미인수·장애로 회수 대기. **신규 비밀번호 적용 전에는 재배정 금지** |
+| 회수중 | 종료·미인수·장애로 회수 대기. **회수 체크리스트(R24) 완료 전에는 재배정 금지** |
 | 정지 | 서비스 측 정지(장애). 정지율 산출 대상 |
 | 만료 | 구독 만료일 경과 |
 
-### 5-3. 계정 금고(password_status)
-`정상` ↔ `변경대기`(신규 비밀번호 생성됨) → 관리자가 서비스에 적용 후 「비밀번호 변경 완료」 → `정상`(password ← new_password, new_password 비움, changed_at 기록)
+### 5-3. 좌석 접속 링크(access_url)
+`등록` ↔ `미등록`. 미등록 좌석은 배정 풀·수동 배정·장애 대체에서 모두 제외되고 배정안내 메일도 보류된다(R14-2·R16). 관리자가 계정 화면에서 언제든 등록·수정할 수 있다.
 
 ---
 
@@ -206,24 +204,24 @@
 **승인·배정**
 - R13. 승인 = status 승인, approved_on/approved_by 기록 → `auto_assign_on_approve`가 true면 즉시 프로그램 단위 자동 배정 시도 → 성공분은 안내 메일 대기열 등록.
 - R14. 자동 배정 알고리즘(프로그램별, 트랜잭션):
-  1) 대여기간 = periodFor(program, 오늘) 2) 가용 풀 = status 가용 ∧ kind 운영 ∧ (expires_on 없음 ∨ expires_on ≥ 대여종료일) ∧ password_status 정상 3) 대기열 = 상태 승인, applied_at 오름차순 4) 희망 GPT/Claude는 해당 풀에서, 무관은 잔량 많은 서비스에서 5) cap 잔여 소진 시 중단 6) 배정 시 assignments(account_id, service, status 배정, assigned_on, rent_start, rent_end) + accounts(status 배정, current_assignment_id) 갱신 + 로그.
+  1) 대여기간 = periodFor(program, 오늘) 2) 가용 풀 = status 가용 ∧ kind 운영 ∧ (expires_on 없음 ∨ expires_on ≥ 대여종료일) ∧ 접속 링크(access_url) 등록 3) 대기열 = 상태 승인, applied_at 오름차순 4) 희망 GPT/Claude는 해당 풀에서, 무관은 잔량 많은 서비스에서 5) cap 잔여 소진 시 중단 6) 배정 시 assignments(account_id, service, status 배정, assigned_on, rent_start, rent_end) + accounts(status 배정, current_assignment_id) 갱신 + 로그.
 - R15. 배정일기준 프로그램은 배정일부터 days−1일까지. 고정기간 프로그램은 end_on ≤ 오늘이면 자동 배정 대상에서 제외.
-- R16. 「배정안내」 메일에 계정명(로그인 이메일)·비밀번호(복호화)·대여기간·인수 확인 링크·장애 신고 링크·학습데이터 OFF 절차·회수 절차를 치환하여 발송. 발송 시 notified_at 기록. password_status가 변경대기인 계정은 발송 보류.
+- R16. 「배정안내」 메일에 계정명(로그인 이메일)·접속 링크·대여기간·인수 확인 링크·장애 신고 링크·학습데이터 OFF 절차·회수 절차를 치환하여 발송. 발송 시 notified_at 기록. 접속 링크가 등록되지 않은 좌석은 발송 보류(로그 `mail.assignment.hold`).
 - R17. 반려: status 반려 + 사유 note. 취소: 관리자 수동, 계정이 연결돼 있으면 회수중으로.
 
 **인수·만료·회수**
 - R18. 인수 확인 링크 `GET /ack?id=<배정ID>&t=<HMAC>`: 토큰 검증 → 배정 상태면 acknowledged_at 기록, 사용중 전환, 완료 페이지. 이미 처리됐거나 상태 불일치면 안내만. 관리자도 화면에서 수동 인수 처리 가능.
 - R19. 미인수 자동 취소: 상태 배정 ∧ notified_at 있음 ∧ acknowledged_at 없음 ∧ 경과일 ≥ ack_due_days → 인수기한초과, note에 사유·일자, 계정은 회수중 + current_assignment_id 해제.
-- R20. 대여 종료: 사용중 ∧ rent_end ≤ 오늘 → 회수중, 계정 회수중.
-- R21. 회수중(또는 인수기한초과로 회수중) 계정에 신규 비밀번호 자동 생성(대문자·소문자·숫자·기호 각 1자 이상 포함, 길이 password_length, 혼동 문자 제외 세트) → new_password_enc, password_status 변경대기. 이미 변경대기이거나 chk_password_changed가 true면 재생성 금지.
-- R22. 알림: `alerts` 재생성 + accounts.alert 문구(⚠ 대여기간 만료(날짜, D+n) — 비밀번호 변경 필요(신규비밀번호 생성됨) / ⚠ 인수기한 초과 — 회수 필요 / 비밀번호 변경 완료 — 회수 완료 처리 필요) + 관리자 대시보드 배지 + 일일 점검 메일.
-- R23. 「비밀번호 변경 완료」(관리자): password ← new_password, 정상, changed_at, chk_password_changed=true, 로그.
-- R24. 회수 체크리스트 5개(대화삭제·메모리삭제·전체로그아웃·대화기록점검·비밀번호변경)가 모두 true여야 「회수 완료」 가능 → returned_at, 회수완료, 계정 가용·current 해제 → 즉시 해당 프로그램(및 대기 중 다른 프로그램) 자동 재배정 시도.
+- R20. 대여 종료: 사용중 ∧ rent_end ≤ 오늘 → 회수중, 계정 회수중. 접근 차단은 R24 ② 체크로 기록한다.
+- R21. **폐지(2026-09-17).** 신규 비밀번호 자동 생성 없음. 팀 계정 모델에서는 회수 시 관리자가 좌석을 팀에서 제거하여 접근을 차단한다(R24 ②). (구: 회수중 계정에 신규 비밀번호 자동 생성 → password_status 변경대기)
+- R22. 알림: `alerts` 재생성 + accounts.alert 문구(⚠ 대여기간 만료(날짜, D+n) — 대화·메모리 삭제 후 팀에서 제거 필요 / ⚠ 인수기한 초과 — 회수 필요 / 회수 체크리스트 완료 — 회수 완료 처리 필요) + 관리자 대시보드 배지 + 일일 점검 메일.
+- R23. **폐지(2026-09-17).** 「비밀번호 변경 완료」 없음. 접근 차단은 R24 ② 「팀에서 제거」 체크로 기록한다.
+- R24. 회수 체크리스트 2개(① 대화·메모리 삭제 ② 팀에서 제거(접속 차단))가 모두 true여야 「회수 완료」 가능 → returned_at, 회수완료, 계정 가용·current 해제 → 즉시 해당 프로그램(및 대기 중 다른 프로그램) 자동 재배정 시도.
 - R25. 계정 통계: 배정일수 = 각 배정의 (rent_start 또는 assigned_on) ~ (returned_at 또는 rent_end 또는 오늘, 오늘 초과 시 오늘) 일수 합(취소·반려 제외), 배정횟수 = 건수. 일일 작업이 갱신.
 
 **장애**
 - R26. 장애 신고 링크 `GET /incident?id=<배정ID>&t=<HMAC>` → 유형(정지|로그인불가|기타)·증상 입력 → incidents 기록 + 계정 상태(정지 유형이면 정지) + 관리자 즉시 메일.
-- R27. 대체: 관리자가 장애 건 선택 → 예비(kind 예비) 우선, 없으면 가용 운영 계정 중 같은 서비스로 자동 선택 → 기존 배정은 회수중(비밀번호 생성 규칙 적용), 새 배정 건 생성(같은 프로그램·사용자·대여기간 승계) + 안내 메일. incidents.status 완료, replacement_account_id.
+- R27. 대체: 관리자가 장애 건 선택 → 예비(kind 예비) 우선, 없으면 가용 운영 계정 중 같은 서비스로 자동 선택 → 기존 배정은 회수중(회수 체크리스트 R24 적용), 새 배정 건 생성(같은 프로그램·사용자·대여기간 승계) + 안내 메일. incidents.status 완료, replacement_account_id.
 - R28. 정지율 = 상태 정지 계정 / 전체 계정 × 100. `suspension_rate_warn` 초과 시 대시보드·점검 메일에 「업체 협의 필요」 경고.
 
 **실적·보고**
@@ -242,7 +240,7 @@
 ### 7-1. 공개(참여자)
 | 경로 | 내용 |
 |---|---|
-| GitHub Pages 삽입 블록 | 기존 `signup-snippet.html` 유지. STEP 1 윤리가이드라인 「영상 보기」(새 창) → 「시청 완료 확인」 체크 → STEP 2 활성화. 프로그램 드롭다운 24개 고정(optgroup: 학생·교원·직원·윤리·재직자·지역민교육), 이름·구분·소속·연락처·이메일·희망 서비스·보유 여부, 개인정보 동의 블록(항목·목적·기간은 API 값), 서약 체크, 2일 내 인수 확인 안내. 접수 성공 시 **입력 내역 전부 삭제 + 팝업**(「입력하신 이메일 ○○로 계정과 비밀번호를 보내드릴 예정」, 접수번호·대여기간, 2일 인수 확인 안내). 변경점: `WEBAPP_URL` → 새 API 베이스 URL, 요청은 `application/json`(CORS preflight 허용). |
+| GitHub Pages 삽입 블록 | 기존 `signup-snippet.html` 유지. STEP 1 윤리가이드라인 「영상 보기」(새 창) → 「시청 완료 확인」 체크 → STEP 2 활성화. 프로그램 드롭다운 24개 고정(optgroup: 학생·교원·직원·윤리·재직자·지역민교육), 이름·구분·소속·연락처·이메일·희망 서비스·보유 여부, 개인정보 동의 블록(항목·목적·기간은 API 값), 서약 체크, 2일 내 인수 확인 안내. 접수 성공 시 **입력 내역 전부 삭제 + 팝업**(「입력하신 이메일 ○○로 계정과 접속 링크를 보내드릴 예정」, 접수번호·대여기간, 2일 인수 확인 안내). 변경점: `WEBAPP_URL` → 새 API 베이스 URL, 요청은 `application/json`(CORS preflight 허용). |
 | `/ack` | 인수 확인 결과 페이지(성공/이미 처리/링크 오류) |
 | `/incident` | 장애 신고 폼(접수번호 표시, 유형·증상) → 접수 완료 페이지 |
 | `/apply`(선택) | 삽입 블록과 동일 기능의 자체 페이지(GitHub Pages 장애 시 대체 링크) (제안, Mid) |
@@ -250,10 +248,10 @@
 ### 7-2. 관리자 `/admin` (Google 로그인, admins 목록만 통과)
 | 메뉴 | 기능 |
 |---|---|
-| 대시보드 | 오늘 할 일: 승인 대기 n, 미배정 승인 n, 회수 대상(만료/미인수) 목록, 변경대기 비밀번호 n, 장애 미처리 n, 정지율 경고, 구독 만료 D-14 계정, 메일 대기열 상태 |
-| 신청·배정 | 목록(프로그램·상태·이름·이메일·계정·기간·인수·발송 필터/검색), 다중 선택 → 승인(자동 배정·발송) / 반려(사유) / 취소, 행 상세: 인수 확인 처리, 회수 체크리스트 5개 토글, 비밀번호 변경 완료, 회수 완료, 안내 메일 재발송, 메일 미리보기, 비고 |
+| 대시보드 | 오늘 할 일: 승인 대기 n, 미배정 승인 n, 회수 대상(만료/미인수) 목록, 접속링크 미등록 좌석 n, 장애 미처리 n, 정지율 경고, 구독 만료 D-14 계정, 메일 대기열 상태 |
+| 신청·배정 | 목록(프로그램·상태·이름·이메일·계정·기간·인수·발송 필터/검색), 다중 선택 → 승인(자동 배정·발송) / 반려(사유) / 취소, 행 상세: 인수 확인 처리, 회수 체크리스트 2개 토글, 회수 완료, 안내 메일 재발송, 메일 미리보기, 비고 |
 | 프로그램 | 목록(배정가능 GPT/Claude, 배정 현황/상한), 등록·수정(이름·대상·방식·기간·상한·상태), 「하반기 24개 일괄 등록」, 종료 처리 |
-| 계정 | 목록(상태·서비스·구분·만료일·현재 배정·배정일수·횟수·알림), 등록·CSV 가져오기(계정ID·서비스·구분·로그인이메일·비밀번호·활성화일·만료일·등록이메일소유·2FA), 금고 보기(클릭 시 복호화·열람 로그), 신규 비밀번호 생성(선택 계정), 상태 변경 |
+| 계정 | 목록(상태·서비스·구분·만료일·현재 배정·배정일수·횟수·알림), 등록·CSV 가져오기(계정ID·서비스·구분·로그인이메일·접속링크·활성화일·만료일), 접속 링크 등록·수정, 상태 변경 |
 | 사용자 | 목록·검색, 동의 일시, 파기 여부, 「개인정보 파기 실행」 |
 | 장애 | 목록·상세, 「대체 계정 배정」, 상태 변경, 유형별 건수·정지율 |
 | 실적 | §10 지표 표(프로그램별·요약), 기간 필터, CSV 다운로드, 월별 스냅샷 목록·「지금 생성」 |
@@ -270,13 +268,13 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 
 | 템플릿 | 발송 시점 | 치환자 |
 |---|---|---|
-| 배정안내 | 자동 배정 직후(대기열) / 재발송 / 장애 대체 | {이름} {프로그램명} {서비스명} {로그인URL} {계정ID} {계정명} {비밀번호} {대여시작일} {대여종료일} {인수확인링크} {장애신고링크} {인수기한} {학습데이터OFF절차} {회수절차} {이용수칙URL} {서약문URL} {접수번호} |
+| 배정안내 | 자동 배정 직후(대기열) / 재발송 / 장애 대체 | {이름} {프로그램명} {서비스명} {로그인URL} {계정ID} {계정명} {접속링크} {대여시작일} {대여종료일} {인수확인링크} {장애신고링크} {인수기한} {학습데이터OFF절차} {회수절차} {이용수칙URL} {서약문URL} {접수번호} |
 | 접수안내 | 신청 접수 직후 | {이름} {프로그램명} {접수번호} {대여기간} {대여시작일} {대여종료일} {윤리가이드라인URL} |
-| 일일 점검(관리자) | 일일 작업 말미 | 승인 대기·미배정·오늘 만료·경과·미인수 회수·신규 비밀번호(설정 시)·장애·정지율 경고·구독 만료 임박·메일 대기열 |
+| 일일 점검(관리자) | 일일 작업 말미 | 승인 대기·미배정·오늘 만료·경과·미인수 회수·장애·정지율 경고·구독 만료 임박·메일 대기열 |
 | 장애 신고(관리자) | 신고 접수 즉시 | 접수번호·계정·유형·증상·신고자 |
 | 월간 스냅샷(관리자) | 매월 1일 | 요약 지표 + CSV 첨부 |
 
-기본 문구(Apps Script 본 그대로 시드):
+기본 문구(시드 값, `lib/mail/templates.ts`):
 
 **배정안내** 제목 `[AI융합원] {프로그램명} — AI 유료계정({서비스명}) 배정 안내`
 ```
@@ -285,8 +283,11 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 
 ■ 서비스: {서비스명} ({로그인URL})
 ■ 계정명(로그인 이메일): {계정명}
-■ 비밀번호: {비밀번호}
+■ 접속 링크: {접속링크}
 ■ 대여기간: {대여시작일} ~ {대여종료일}
+
+※ 이 계정은 AI융합원 팀 계정에 소속된 좌석입니다. 위 접속 링크로 들어가 계정명(로그인 이메일)으로
+   로그인해 주세요. 별도의 비밀번호는 안내하지 않으며, 로그인 방법은 접속 화면의 안내를 따릅니다.
 
 ① 인수 확인(필수) — 아래 링크를 눌러 계정을 인수했음을 확인해 주세요.
 {인수확인링크}
@@ -298,14 +299,14 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 {장애신고링크}
 
 ④ 이용 수칙
-· 계정은 배정받은 본인만 사용하며 타인에게 공유하지 않습니다.
+· 계정은 배정받은 본인만 사용하며 접속 링크를 타인에게 공유하지 않습니다.
 · 개인정보·미공개 연구자료·내부 문서를 입력하지 않습니다.
 · GNU AI 윤리가이드라인을 준수합니다. {이용수칙URL}
 
 ⑤ 대여 종료일({대여종료일})까지 할 일
 · 본인 산출물(프롬프트·결과)은 개인 저장소에 백업
 · {회수절차}
-· 종료 후 AI융합원이 비밀번호를 변경하여 접근을 차단합니다.
+· 종료 후 AI융합원이 대화·메모리를 삭제하고 해당 계정을 팀에서 제거하여 접근을 차단합니다.
 
 문의: AI융합원 (055-772-4857)
 ```
@@ -316,7 +317,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 {이름} 님, {프로그램명} AI 유료계정 신청이 접수되었습니다. (접수번호 {접수번호})
 
 · 대여기간: {대여기간}
-· 관리자 승인 후 계정 정보(계정명·비밀번호·대여기간)를 이메일로 안내드립니다.
+· 관리자 승인 후 계정 정보(계정명·접속 링크·대여기간)를 이메일로 안내드립니다.
 · 신청 순으로 배정되며, 가용 계정이 없으면 회수되는 대로 순차 배정됩니다.
 
 문의: AI융합원 (055-772-4857)
@@ -390,7 +391,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 `/api/cron/daily` 순서(트랜잭션 단위로 분리, 각 단계 로그):
 1. (폐지) 프로그램 자동 종료 — R4 폐지, 상태 전환은 관리자 수동
 2. 미인수 자동 취소(R19)
-3. 대여 종료 → 회수중(R20) + 신규 비밀번호 생성(R21) + alerts·accounts.alert 재생성(R22)
+3. 대여 종료 → 회수중(R20) + alerts·accounts.alert 재생성(R22)
 4. 승인 대기 자동 배정(R14, 모든 「진행중」 프로그램)
 5. 메일 대기열 발송(일일 한도 고려, 실패 재시도)
 6. 계정 통계 갱신(R25)
@@ -414,7 +415,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 보호: 공개 POST는 IP당 분당 10회 제한(Upstash 없이 메모리/DB 카운터로 충분, 제안 Mid), honeypot 필드, zod 검증, 이메일 형식 검사.
 
 ### 12-2. 관리자(Server Actions, 세션 필수 + admins 검사)
-프로그램 CRUD·시드, 계정 CRUD·CSV 가져오기·금고 조회·비밀번호 생성, 배정 승인/반려/취소/수동 배정/인수 처리/체크리스트/비밀번호 변경 완료/회수 완료/재발송/미리보기, 장애 처리/대체, 실적 조회/CSV/스냅샷, 설정·템플릿·관리자, 로그 조회, 일일 작업 수동 실행, 개인정보 파기.
+프로그램 CRUD·시드, 계정 CRUD·CSV 가져오기·접속 링크 등록·수정, 배정 승인/반려/취소/수동 배정/인수 처리/체크리스트/회수 완료/재발송/미리보기, 장애 처리/대체, 실적 조회/CSV/스냅샷, 설정·템플릿·관리자, 로그 조회, 일일 작업 수동 실행, 개인정보 파기.
 
 ### 12-3. 내부
 `/api/cron/daily`, `/api/cron/monthly` (CRON_SECRET), `/api/health`.
@@ -425,15 +426,15 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 
 - 관리자 화면·Server Actions는 미들웨어에서 세션 + `admins` 검사. 미허용 이메일은 로그인 후 「권한 없음」.
 - DB 접근은 서버 전용 service role. RLS는 모든 테이블에서 anon·authenticated 거부(방어 계층).
-- 금고 암호화 키 `VAULT_KEY`, 링크 서명 `APP_SECRET`, `CRON_SECRET`, `RESEND_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`는 Vercel 환경변수. 코드·로그에 비밀번호 평문 금지(메일 본문 생성 시에만 복호화, mail_queue의 body에는 저장 후 발송 완료 시 본문 삭제 — 제안, High).
-- 금고 열람·메일 발송·비밀번호 변경은 logs에 actor 포함 기록.
+- 링크 서명 `APP_SECRET`, `CRON_SECRET`, `RESEND_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`는 Vercel 환경변수. 접속 링크·로그인 이메일은 서버 전용 테이블에만 두고 로그에 기록 금지. mail_queue 본문은 발송 완료 시 삭제.
+- 접속 링크 등록·수정과 메일 발송은 logs에 actor 포함 기록(링크 값 자체는 남기지 않음).
 - 개인정보: 수집 항목·목적·기간 고지, 동의 일시 기록, 파기 기능(R30). 로그에는 이름·배정ID 수준만.
 - 백업: Supabase Pro 일일 백업(권장) 또는 관리자 「전체 CSV 내보내기」 주 1회 수동(Free 사용 시).
 - 확인 필요 사항(구현 전 결정):
   1) Resend 발신 도메인 — DNS 설정 가능한 도메인 확보(대학 도메인 하위 or 별도 도메인).
   2) Supabase Free vs Pro — 6개월 운영이면 Pro 권장(일시정지·백업) (Opinion, High).
   3) Vercel Hobby 비상업 조건 적용 가능 여부 — 불가 시 Pro($20/월/사용자) 또는 대학 서버 Docker 배포.
-  4) 계정 통제권(등록 이메일·2FA) — 미확보 계정은 비밀번호 변경 불가 → 프로그램 단위 고정 배정으로 운영.
+  4) 팀 계정 통제권 — 관리자 계정(gnuxai.ac.kr)의 ChatGPT Team·Claude Team 좌석 관리 권한 확보.
 
 ---
 
@@ -444,10 +445,10 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 | 단계 | 산출물 | 완료 기준 |
 |---|---|---|
 | 0. 스캐폴딩 | `nextjs-init` 스킬로 프로젝트 생성, Supabase 프로젝트(서울)·Resend·Vercel 연결, `.env.example`, `CLAUDE.md`(§15) | 로컬 실행, Supabase 연결 확인, 빈 `/admin` Google 로그인 성공 |
-| 1. 데이터·인증 | 마이그레이션 SQL(§4 전체, enum, 인덱스, 뷰), 시드 스크립트(§9), 암호화 유틸, admins 미들웨어 | 시드 후 프로그램 24개·설정·템플릿 존재, 비허용 계정 차단 |
-| 2. 프로그램·계정·금고 | `/admin/programs`, `/admin/accounts`(CSV 가져오기, 금고 보기, 비밀번호 생성) | 계정 CSV 6건 가져오기 → 금고 복호화 표시 → 열람 로그 기록 |
-| 3. 신청·승인·배정·메일 | 공개 API 2종(CORS), `signup-snippet.html` 연결 수정, 승인/자동 배정/메일 대기열/Resend 발송, `/admin/assignments` | GitHub Pages(또는 로컬 HTML)에서 신청 → 관리자 승인 → 계정 배정 → 실제 메일 수신(계정명·비밀번호 포함) |
-| 4. 인수·만료·회수 | `/ack`, 미인수 취소, 종료 → 회수중, 비밀번호 생성, alerts, 체크리스트·회수 완료·재배정, `/api/cron/daily` | 시나리오 T1~T6(§16) 통과 |
+| 1. 데이터·인증 | 마이그레이션 SQL(§4 전체, enum, 인덱스, 뷰), 시드 스크립트(§9), admins 미들웨어 | 시드 후 프로그램 24개·설정·템플릿 존재, 비허용 계정 차단 |
+| 2. 프로그램·계정 | `/admin/programs`, `/admin/accounts`(CSV 가져오기, 접속 링크 등록·수정) | 좌석 CSV 6건 가져오기 → 접속 링크 표시 → 미등록 좌석이 대시보드에 표시 |
+| 3. 신청·승인·배정·메일 | 공개 API 2종(CORS), `signup-snippet.html` 연결 수정, 승인/자동 배정/메일 대기열/Resend 발송, `/admin/assignments` | GitHub Pages(또는 로컬 HTML)에서 신청 → 관리자 승인 → 계정 배정 → 실제 메일 수신(계정명·접속 링크 포함) |
+| 4. 인수·만료·회수 | `/ack`, 미인수 취소, 종료 → 회수중, alerts, 체크리스트·회수 완료·재배정, `/api/cron/daily` | 시나리오 T1~T6(§16) 통과 |
 | 5. 장애·실적·스냅샷·파기 | `/incident`, 대체 배정, 정지율, 실적 뷰·화면·CSV, `/api/cron/monthly`, 개인정보 파기, 로그 화면 | 시나리오 T7~T10 통과, 스냅샷 메일 수신 |
 | 6. 배포·이관·시범운영 | Vercel 배포·Cron 등록·환경변수, 기존 시트 데이터(있을 경우) CSV 이관, 시범 프로그램 1개·테스트 계정 2~3개 전 과정 실행 | 시범 운영 체크리스트 전 항목 완료, 구축가이드(운영 매뉴얼) 갱신 |
 
@@ -460,10 +461,10 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 - 사양: docs/PRD.md 가 단일 진실. 규칙 번호(R1~R33)를 커밋 메시지·주석에 인용.
 - 스택: Next.js App Router + TS + Tailwind + shadcn/ui, Supabase(service role, 서버 전용), Resend, Vercel Cron.
 - 시간대: 모든 날짜 계산은 Asia/Seoul. 유틸 lib/date.ts 의 todayKST() 만 사용.
-- DB 접근: lib/db.ts 의 서버 클라이언트만. 브라우저 번들에 Supabase 키·VAULT_KEY 절대 포함 금지.
+- DB 접근: lib/db.ts 의 서버 클라이언트만. 브라우저 번들에 Supabase 서비스 키 절대 포함 금지.
 - 상태 전이: lib/state.ts 의 transition() 을 통해서만 변경, 항상 logs 기록.
 - 메일: 직접 발송 금지. mail_queue 에 넣고 lib/mail/dispatch.ts 가 발송.
-- 테스트: 도메인 로직(배정·만료·비밀번호·지표)은 순수 함수로 분리하고 Vitest 단위 테스트, 흐름은 Playwright.
+- 테스트: 도메인 로직(배정·만료·알림·지표)은 순수 함수로 분리하고 Vitest 단위 테스트, 흐름은 Playwright.
 - 한글 UI, 라벨은 lib/labels.ts 에서 관리.
 - 비밀 값은 .env.local, 예시는 .env.example 에 유지.
 ```
@@ -475,14 +476,14 @@ app/
   admin/(dashboard|assignments|programs|accounts|users|incidents|reports|settings|logs)/
   api/public/programs/route.ts, api/public/apply/route.ts
   api/cron/daily/route.ts, api/cron/monthly/route.ts
-lib/ db.ts, crypto.ts, date.ts, state.ts, ids.ts, assign.ts, password.ts, alerts.ts, report.ts, mail/(templates.ts, render.ts, dispatch.ts), auth.ts
+lib/ db.ts, date.ts, state.ts, ids.ts, assign.ts, alerts.ts, report.ts, mail/(templates.ts, render.ts, dispatch.ts), auth.ts
 supabase/migrations/*.sql, supabase/seed.sql
 scripts/ seed-programs.ts, import-accounts.ts
 docs/ PRD.md, 운영매뉴얼.md
 public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 ```
 
-환경변수: `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Auth 전용), `RESEND_API_KEY`, `VAULT_KEY`, `APP_SECRET`, `CRON_SECRET`, `INITIAL_ADMIN_EMAIL`.
+환경변수: `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Auth 전용), `RESEND_API_KEY`, `APP_SECRET`, `CRON_SECRET`, `INITIAL_ADMIN_EMAIL`.
 
 ---
 
@@ -492,16 +493,17 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 |---|---|---|
 | T1 | 기간 미설정 프로그램으로 신청 | 400 「접수 준비 중(대여기간 미설정)」, 페이지에서는 옵션 비활성 |
 | T2 | 정상 신청 2건(같은 이메일·같은 프로그램) | 1건 접수 + 접수안내 메일, 2번째 중복 거부 |
-| T3 | 승인(가용 GPT 1·Claude 1, 희망 GPT·무관·Claude 3명) | 신청 순으로 2명 배정(희망 반영), 1명 승인 대기, 배정안내 메일 2통(계정명·비밀번호 포함) |
+| T3 | 승인(가용 GPT 1·Claude 1, 희망 GPT·무관·Claude 3명) | 신청 순으로 2명 배정(희망 반영), 1명 승인 대기, 배정안내 메일 2통(계정명·접속 링크 포함) |
 | T4 | 인수 링크 클릭 / 위조 토큰 | 사용중 전환·acknowledged_at 기록 / 「링크가 올바르지 않습니다」 |
-| T5 | 발송 2일 경과 미인수 상태에서 일일 작업 | 인수기한초과, 계정 회수중 + 신규 비밀번호 변경대기, alerts 1건, 점검 메일에 「미인수 회수」 |
-| T6 | 대여종료일 경과 → 비밀번호 변경 완료 → 5개 체크 → 회수 완료 | 회수중 → 회수완료, 계정 가용, 대기자에게 자동 재배정 + 메일, 재생성 없음(pwDone) |
+| T5 | 발송 2일 경과 미인수 상태에서 일일 작업 | 인수기한초과, 계정 회수중, alerts 1건, 점검 메일에 「미인수 회수」 |
+| T6 | 대여종료일 경과 → 회수 체크 2개 → 회수 완료 | 회수중 → 회수완료, 계정 가용, 대기자에게 자동 재배정 + 메일 |
 | T7 | 장애 신고(정지) → 대체 | incidents 기록·관리자 메일, 예비 계정으로 새 배정 + 메일, 기존 계정 정지, 정지율 갱신 |
 | T8 | 정지율 5% 초과 | 대시보드·점검 메일 경고 |
 | T9 | 월간 스냅샷 | report_snapshots 1행, CSV 2종, 관리자 메일 첨부 |
 | T10 | 개인정보 파기 | 이름·이메일·연락처 「(파기)」, purged_at, 실적 수치 불변 |
 | T11 | 일일 작업 2회 연속 실행 | 2회째 변경 0건(멱등) |
 | T12 | 비허용 Google 계정 로그인 | `/admin` 접근 차단 |
+| T14 | 접속 링크 미등록 좌석 | 배정 풀·수동 배정·장애 대체에서 제외, 배정안내 메일 보류, 대시보드 「접속링크 미등록」 표시 |
 | T13 | 100건 배정 메일 일괄 | Resend 일일 한도 내 순차 발송, 초과분 다음 날 재시도, 상태 추적 |
 
 ---
@@ -512,12 +514,12 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 |---|---|
 | 대여 단위·기간 | 프로그램별, 관리자가 설정(고정기간 또는 배정일기준) |
 | 배정 순서 | 신청 순, 기존 계정 보유 여부 무관 |
-| 비밀번호 전달 | 배정 안내 메일 본문에 계정명·비밀번호 기재 |
+| 접속 정보 전달 | 배정 안내 메일 본문에 계정명·좌석 접속 링크 기재(비밀번호 없음) |
 | 절차 | 윤리가이드라인 시청(신청 전, 클릭 시 자동 연결) → 신청 → 승인 시 자동 배정·자동 발송 → 이메일 안내 |
 | 시청 검증 | 별도 확인 절차 없음(체크 확인) |
 | 인수 기한 | 2일, 초과 시 자동 취소·회수·대기자 재배정 |
-| 회수 체크 | 대화삭제·메모리삭제·전체로그아웃·대화기록점검·비밀번호변경 5개 |
-| 비밀번호 | 대여 종료·미인수 시 자동 생성(영문·숫자·기호 혼합 10자), 알림 표시, 관리자 적용 |
+| 회수 체크 | ① 대화·메모리 삭제 ② 팀에서 제거(접속 차단) 2개 |
+| 계정 모델 | ChatGPT Team·Claude Team 좌석. 좌석 등록 시 고정 접속 링크를 1회 입력, 회수 시 팀 콘솔에서 좌석 제거 |
 | 회수안내 메일 | 없음(삭제) |
 | 담당자 | 운영관리자만, 담당자 추가 기능. 프로그램 담당자 없음 |
 | 실적 | 프로그램별 사용 인원(인수 확인 기준) + 유휴율·회전율·대기·정지율, 매월 1일 스냅샷 |
@@ -525,7 +527,7 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 | 장애 | 신고 링크, 유형별 건수, 정지율 5% 경고 |
 | 프로그램 목록 | 하반기 교육계획 24개, 신청 페이지 드롭다운 고정 |
 | 신청 완료 UX | 입력 내역 전부 삭제 + 팝업 안내 |
-| 재구축 스택 | Next.js + Supabase + Vercel, Google 로그인, DB 금고, GitHub Pages 삽입 |
+| 재구축 스택 | Next.js + Supabase + Vercel, Google 로그인, GitHub Pages 삽입 |
 
 ---
 
@@ -534,4 +536,5 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 | 일자 | 변경 | 사유 |
 |---|---|---|
 | 2026-09-17 | 프로그램 상태 「진행\|종료」 → 「시작전\|진행중\|완료」 3단계, 목록 드롭다운으로 즉시 전환. R4(자동 종료) 폐지, R3 을 상태별 표시 표로 개정. 마이그레이션 `0002_program_status.sql`(기존 기간 미설정 프로그램 → 시작전) | 관리자 요청 — 접수 개시·종료 시점을 담당자가 직접 통제 |
+| 2026-09-17 | 운영 모델을 **팀 계정(좌석 + 고정 접속 링크)** 으로 전환. 비밀번호 금고·생성·변경대기(R21·R23) 폐지, R14·R16·R20·R22·R24·R27 개정, 회수 체크리스트 5→2개(대화·메모리 삭제 / 팀에서 제거), 「등록이메일 소유」·「2FA」 필드 삭제, `VAULT_KEY` 제거. 마이그레이션 `0003_team_seat_access_url.sql` — **password_enc·new_password_enc 는 되돌릴 수 없이 삭제되므로 적용 전에 필요한 값을 옮겨 적을 것** | 관리자 결정 — gnuxai.ac.kr 팀 계정 좌석 운영으로 비밀번호 관리가 불필요해짐 |
 | 2026-09-17 | R3 재개정: 「진행중」이면 대여기간 입력 전에도 접수 가능(드롭다운 「접수중」). 기간 미설정 건은 배정만 보류 | 관리자 요청 — 상태를 진행중으로 바꾸면 곧바로 접수가 열려야 함 |

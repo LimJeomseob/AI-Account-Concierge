@@ -4,7 +4,6 @@ export type Service = 'GPT' | 'Claude'
 export type ServiceWish = Service | '무관'
 export type AccountKind = '운영' | '예비'
 export type AccountStatus = '가용' | '배정' | '회수중' | '정지' | '만료'
-export type PasswordStatus = '정상' | '변경대기'
 export type ProgramTarget = '교원' | '직원' | '학생' | '지역민' | '혼합'
 export type ProgramMode = '고정기간' | '배정일기준'
 export type ProgramStatus = '시작전' | '진행중' | '완료'
@@ -45,15 +44,11 @@ export interface Account {
   updated_at?: string
 }
 
+/** 좌석 접속 정보 (서버 전용) — 비어 있는 access_url 은 배정 풀에서 제외 (R14-2) */
 export interface AccountSecret {
   account_id: string
   login_email: string | null
-  password_enc: string | null
-  new_password_enc: string | null
-  password_status: PasswordStatus
-  password_changed_at: string | null
-  owns_registered_email: boolean
-  two_fa: string | null
+  access_url: string | null
   note: string | null
 }
 
@@ -78,10 +73,7 @@ export interface Assignment {
   acknowledged_at: string | null
   returned_at: string | null
   chk_delete_chats: boolean
-  chk_delete_memory: boolean
-  chk_logout_all: boolean
-  chk_history_review: boolean
-  chk_password_changed: boolean
+  chk_team_removed: boolean
   note: string | null
   updated_at?: string
 }

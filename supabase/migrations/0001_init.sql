@@ -19,9 +19,7 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   create type account_status    as enum ('가용', '배정', '회수중', '정지', '만료');
 exception when duplicate_object then null; end $$;
-do $$ begin
-  create type password_status   as enum ('정상', '변경대기');
-exception when duplicate_object then null; end $$;
+-- (password_status enum 은 0003 에서 폐지 — 팀 좌석 모델에는 비밀번호가 없다)
 do $$ begin
   create type program_target    as enum ('교원', '직원', '학생', '지역민', '혼합');
 exception when duplicate_object then null; end $$;
@@ -93,7 +91,7 @@ create table if not exists admins (
 );
 
 -- ---------------------------------------------------------------------------
--- 4. 계정 / 금고
+-- 4. 계정 / 좌석 접속 정보
 -- ---------------------------------------------------------------------------
 create table if not exists accounts (
   id                    text primary key,               -- GPT-001, CL-001
@@ -110,16 +108,11 @@ create table if not exists accounts (
   updated_at            timestamptz not null default now()
 );
 
--- 계정 금고: 서버 전용. *_enc 는 AES-256-GCM(VAULT_KEY) 애플리케이션 계층 암호화.
+-- 계정 접속 정보: 서버 전용(브라우저·로그 노출 금지).
+-- 비밀번호 컬럼은 0003 에서 폐지되고 좌석 고정 접속 링크(access_url)가 그 자리를 대신한다.
 create table if not exists account_secrets (
   account_id            text primary key references accounts(id) on delete cascade,
   login_email           text,
-  password_enc          text,
-  new_password_enc      text,
-  password_status       password_status not null default '정상',
-  password_changed_at   timestamptz,
-  owns_registered_email boolean not null default false,
-  two_fa                text,
   note                  text,
   updated_at            timestamptz not null default now()
 );
@@ -181,11 +174,8 @@ create table if not exists assignments (
   notified_at           timestamptz,
   acknowledged_at       timestamptz,
   returned_at           timestamptz,
+  -- 회수 체크리스트 (R24) — 0003 에서 2개로 정리, chk_team_removed 는 0003 이 추가
   chk_delete_chats      boolean not null default false,
-  chk_delete_memory     boolean not null default false,
-  chk_logout_all        boolean not null default false,
-  chk_history_review    boolean not null default false,
-  chk_password_changed  boolean not null default false,
   note                  text,
   updated_at            timestamptz not null default now()
 );
@@ -284,7 +274,6 @@ create table if not exists alerts (
   program_name    text,
   rent_end        date,
   elapsed_days    int,
-  password_status text,
   guide           text,
   generated_at    timestamptz not null default now()
 );
@@ -311,27 +300,7 @@ create table if not exists rate_limits (
 -- ---------------------------------------------------------------------------
 
 -- 프로그램별 배정 가능 계정 수 (PRD §4-1 파생)
-create or replace view program_availability as
-select
-  p.id as program_id,
-  count(*) filter (
-    where a.service = 'GPT' and s.account_id is not null
-      and (a.expires_on is null or a.expires_on >= (
-        case when p.mode = '고정기간' then p.end_on
-             else (now() at time zone 'Asia/Seoul')::date + greatest(p.days - 1, 0) end))
-  ) as avail_gpt,
-  count(*) filter (
-    where a.service = 'Claude' and s.account_id is not null
-      and (a.expires_on is null or a.expires_on >= (
-        case when p.mode = '고정기간' then p.end_on
-             else (now() at time zone 'Asia/Seoul')::date + greatest(p.days - 1, 0) end))
-  ) as avail_claude
-from programs p
-left join accounts a
-  on a.status = '가용' and a.kind = '운영'
-left join account_secrets s
-  on s.account_id = a.id and s.password_status = '정상'
-group by p.id;
+-- 정의는 0003_team_seat_access_url.sql 이 소유한다 (접속 링크 등록 조건 포함).
 
 -- 프로그램별 실적 (PRD §10)
 create or replace view v_report_program as

@@ -32,7 +32,6 @@ cp .env.example .env.local     # 값 채우기
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 DB 접근 |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 브라우저 Auth 전용 |
 | `RESEND_API_KEY` | 메일 발송 (없으면 대기열에 보관만) |
-| `VAULT_KEY` | 계정 금고 AES-256-GCM 키 — `openssl rand -base64 32` |
 | `APP_SECRET` | 인수·장애 링크 HMAC 서명 키 — `openssl rand -hex 32` |
 | `CRON_SECRET` | Cron 엔드포인트 인증 — `openssl rand -hex 32` |
 | `INITIAL_ADMIN_EMAIL` | 시드로 등록할 최초 관리자 |
@@ -49,7 +48,7 @@ npx tsx scripts/seed.ts --programs --sample-accounts
 
 # 3) 계정 100개 납품 후
 npx tsx scripts/import-accounts.ts accounts.csv
-#    헤더: 계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA
+#    헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일
 
 # 4) 실행
 npm run dev        # http://localhost:3000/admin
@@ -83,7 +82,7 @@ cp docker/.env.docker.example docker/.env  # 키·비밀 값 입력
 
 `vercel.json` 이 다음 두 작업을 등록한다 (UTC 00:00 = KST 09:00).
 
-- `/api/cron/daily` — 프로그램 종료, 미인수 취소, 대여 종료·비밀번호 생성, 자동 배정,
+- `/api/cron/daily` — 미인수 취소, 대여 종료, 자동 배정,
   메일 발송, 계정 통계, 구독 만료, 관리자 점검 메일 (멱등)
 - `/api/cron/monthly` — 월간 실적 스냅샷 + CSV + 관리자 메일
 

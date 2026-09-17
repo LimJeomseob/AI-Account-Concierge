@@ -106,10 +106,11 @@ export async function replaceAccount(
     .eq('status', '가용')
     .eq('service', service)
     .order('kind', { ascending: true }) // 예비 < 운영 (가나다)
+  // 접속 링크가 등록된 좌석만 대체 후보 (R14-2·R27)
   const { data: okSecrets } = await db()
     .from('account_secrets')
     .select('account_id')
-    .eq('password_status', '정상')
+    .not('access_url', 'is', null)
   const okIds = new Set((okSecrets ?? []).map((s) => s.account_id))
 
   const spare = (candidates ?? []).filter((c) => okIds.has(c.id))

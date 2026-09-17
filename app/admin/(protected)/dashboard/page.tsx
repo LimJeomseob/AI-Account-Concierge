@@ -29,10 +29,18 @@ export default async function DashboardPage() {
   const mailPending = await countBy('mail_queue', 'status', ['pending'])
   const mailFailed = await countBy('mail_queue', 'status', ['failed'])
 
-  const { count: pwPending } = await db()
+  // 접속 링크가 없는 운영 좌석 — 배정 대상에서 빠지므로 눈에 띄어야 한다 (R14-2)
+  const { data: liveAccounts } = await db()
+    .from('accounts')
+    .select('id')
+    .eq('kind', '운영')
+    .neq('status', '만료')
+  const { data: linked } = await db()
     .from('account_secrets')
-    .select('account_id', { count: 'exact', head: true })
-    .eq('password_status', '변경대기')
+    .select('account_id')
+    .not('access_url', 'is', null)
+  const linkedIds = new Set((linked ?? []).map((s) => s.account_id))
+  const noLink = (liveAccounts ?? []).filter((a) => !linkedIds.has(a.id)).length
 
   const alerts = await listAlerts()
   const rate = await suspensionRate()
@@ -69,7 +77,7 @@ export default async function DashboardPage() {
         <Stat label="미배정(승인)" value={waiting} />
         <Stat label="사용중" value={inUse} />
         <Stat label="회수 대상" value={alerts.length} warn={alerts.length > 0} />
-        <Stat label="변경대기 비밀번호" value={pwPending ?? 0} warn={(pwPending ?? 0) > 0} />
+        <Stat label="접속링크 미등록" value={noLink} warn={noLink > 0} />
         <Stat label="장애 미처리" value={openIncidents} warn={openIncidents > 0} />
       </div>
 
@@ -96,7 +104,7 @@ export default async function DashboardPage() {
         {alerts.length === 0 ? (
           <p className="text-sm text-slate-500">회수 대상이 없습니다.</p>
         ) : (
-          <Table head={['구분', '계정ID', '로그인 이메일', '배정ID', '이름', '프로그램', '대여종료일', '경과', '비밀번호', '조치']}>
+          <Table head={['구분', '계정ID', '로그인 이메일', '배정ID', '이름', '프로그램', '대여종료일', '경과', '조치']}>
             {alerts.map((a) => (
               <tr key={a.assignment_id}>
                 <Td>{a.category}</Td>
@@ -107,9 +115,6 @@ export default async function DashboardPage() {
                 <Td className="text-xs">{a.program_name}</Td>
                 <Td>{a.rent_end ?? '-'}</Td>
                 <Td>D+{a.elapsed_days}</Td>
-                <Td>
-                  <Badge value={a.password_status} />
-                </Td>
                 <Td className="text-xs">{a.guide}</Td>
               </tr>
             ))}

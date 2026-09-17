@@ -13,7 +13,6 @@ import { config as loadEnv } from 'dotenv'
 loadEnv({ path: '.env.local' })
 loadEnv()
 import { createClient } from '@supabase/supabase-js'
-import { createCipheriv, randomBytes } from 'node:crypto'
 import { DEFAULT_SETTINGS } from '../lib/settings-defaults'
 import { DEFAULT_TEMPLATES } from '../lib/mail/templates'
 import { PROGRAM_SEED } from '../lib/seed-data'
@@ -25,15 +24,6 @@ if (!url || !key) {
   process.exit(1)
 }
 const db = createClient(url, key, { auth: { persistSession: false } })
-
-function encrypt(plain: string): string {
-  const raw = process.env.VAULT_KEY
-  if (!raw) throw new Error('VAULT_KEY 환경변수가 없습니다.')
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', Buffer.from(raw, 'base64'), iv)
-  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
-  return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), enc.toString('base64')].join(':')
-}
 
 async function main() {
   const args = new Set(process.argv.slice(2))
@@ -114,8 +104,7 @@ async function main() {
         {
           account_id: s.id,
           login_email: `${s.id.toLowerCase()}@example.ac.kr`,
-          password_enc: encrypt(`Sample!${s.id}`),
-          password_status: '정상',
+          access_url: `https://example.invalid/team/${s.id.toLowerCase()}`,
         },
         { onConflict: 'account_id' },
       )

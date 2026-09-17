@@ -1,7 +1,7 @@
 /**
  * 계정 CSV 가져오기 (PRD §7-2 계정)
  * 사용법: npx tsx scripts/import-accounts.ts accounts.csv
- * 헤더: 계정ID,서비스,구분,로그인이메일,비밀번호,활성화일,만료일,등록이메일소유,2FA
+ * 헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일
  */
 // .env.local 을 우선 읽고, 없는 값은 .env 로 보충한다 (Next.js 규칙과 맞춤)
 import { config as loadEnv } from 'dotenv'
@@ -9,7 +9,6 @@ loadEnv({ path: '.env.local' })
 loadEnv()
 import { readFileSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
-import { createCipheriv, randomBytes } from 'node:crypto'
 
 const file = process.argv[2]
 if (!file) {
@@ -24,15 +23,6 @@ if (!url || !key) {
   process.exit(1)
 }
 const db = createClient(url, key, { auth: { persistSession: false } })
-
-function encrypt(plain: string): string {
-  const raw = process.env.VAULT_KEY
-  if (!raw) throw new Error('VAULT_KEY 환경변수가 없습니다.')
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', Buffer.from(raw, 'base64'), iv)
-  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
-  return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), enc.toString('base64')].join(':')
-}
 
 function splitCsvLine(line: string): string[] {
   const out: string[] = []
@@ -76,7 +66,8 @@ async function main() {
     if (!id) continue
     const svc = (c[at('서비스')] ?? '').trim()
     const service = svc === 'Claude' || svc === 'CL' ? 'Claude' : 'GPT'
-    const pw = at('비밀번호') >= 0 ? c[at('비밀번호')]?.trim() : ''
+    const rawUrl = at('접속링크') >= 0 ? (c[at('접속링크')] ?? '').trim() : ''
+    if (rawUrl && !/^https?:\/\//i.test(rawUrl)) throw new Error(`${id}: 접속 링크는 http(s):// 로 시작해야 합니다.`)
 
     const { error } = await db.from('accounts').upsert(
       {
@@ -95,14 +86,12 @@ async function main() {
       {
         account_id: id,
         login_email: c[at('로그인이메일')]?.trim() || null,
-        password_enc: pw ? encrypt(pw) : null,
-        owns_registered_email: /^(true|Y|y|1|예|O|o)$/.test((c[at('등록이메일소유')] ?? '').trim()),
-        two_fa: at('2FA') >= 0 ? c[at('2FA')]?.trim() || null : null,
+        access_url: rawUrl || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'account_id' },
     )
-    if (sErr) throw new Error(`${id} 금고: ${sErr.message}`)
+    if (sErr) throw new Error(`${id} 접속 정보: ${sErr.message}`)
     n += 1
   }
   console.log(`계정 ${n}건 가져오기 완료`)

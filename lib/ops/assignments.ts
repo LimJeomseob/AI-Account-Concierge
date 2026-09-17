@@ -8,13 +8,12 @@ import { capRemaining, isAssignable, periodFor, planAllocations, type PoolAccoun
 import { getSettings } from '@/lib/settings'
 import { log, transitionAccount, transitionAssignment } from '@/lib/state'
 import { queueAssignmentMail } from '@/lib/mail/queue'
-import { generateNewPassword } from '@/lib/ops/accounts'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
 import type { Program, Service } from '@/lib/types'
 
 const ACTIVE_OCCUPYING = ['배정', '사용중', '회수중', '회수완료'] as const
 
-/** 배정 가능한 계정 풀 (가용 ∧ 운영 ∧ 비밀번호 정상) — R14-2 */
+/** 배정 가능한 계정 풀 (가용 ∧ 운영 ∧ 접속 링크 등록) — R14-2 */
 export async function availablePool(): Promise<PoolAccount[]> {
   const { data: accs, error } = await db()
     .from('accounts')
@@ -28,7 +27,7 @@ export async function availablePool(): Promise<PoolAccount[]> {
     .from('account_secrets')
     .select('account_id')
     .in('account_id', ids)
-    .eq('password_status', '정상')
+    .not('access_url', 'is', null)
   const ok = new Set((secs ?? []).map((s) => s.account_id))
   return (accs ?? []).filter((a) => ok.has(a.id)) as PoolAccount[]
 }
@@ -213,7 +212,10 @@ export async function cancelAssignment(id: string, actor: string, reason = ''): 
   })
 }
 
-/** 계정을 회수중으로 옮기고 신규 비밀번호 생성 (R20·R21) */
+/**
+ * 계정을 회수중으로 옮긴다 (R20).
+ * 접근 차단(좌석을 팀에서 제거)은 관리자가 회수 체크리스트 ②로 처리한다(R24).
+ */
 export async function moveAccountToReturning(
   accountId: string,
   assignmentId: string,
@@ -231,12 +233,6 @@ export async function moveAccountToReturning(
       detail: { assignment_id: assignmentId },
     })
   }
-  const { data: asg } = await db()
-    .from('assignments')
-    .select('chk_password_changed')
-    .eq('id', assignmentId)
-    .maybeSingle()
-  if (!asg?.chk_password_changed) await generateNewPassword(accountId, actor)
 }
 
 /** R18: 인수 확인 */
@@ -344,7 +340,7 @@ export async function setChecklist(
   await log(actor, 'assignment.checklist', id, { field, value })
 }
 
-/** R24: 회수 완료 (5개 체크 필수) → 계정 가용 → 즉시 재배정 시도 */
+/** R24: 회수 완료 (2개 체크 필수) → 계정 가용 → 즉시 재배정 시도 */
 export async function completeReturn(
   id: string,
   actor: string,
@@ -352,14 +348,14 @@ export async function completeReturn(
 ): Promise<{ reassigned: string[] }> {
   const { data: a } = await db()
     .from('assignments')
-    .select(
-      'status, account_id, program_id, chk_delete_chats, chk_delete_memory, chk_logout_all, chk_history_review, chk_password_changed',
-    )
+    .select('status, account_id, program_id, chk_delete_chats, chk_team_removed')
     .eq('id', id)
     .single()
   if (!a) throw new Error(`배정 ${id} 없음`)
   const missing = CHECKLIST_FIELDS.filter((f) => !(a as Record<string, unknown>)[f])
-  if (missing.length > 0) throw new Error('회수 체크리스트 5개 항목을 모두 완료해야 합니다.')
+  if (missing.length > 0) {
+    throw new Error('회수 체크리스트 2개 항목(대화·메모리 삭제, 팀에서 제거)을 모두 완료해야 합니다.')
+  }
 
   await transitionAssignment({
     id,
@@ -419,6 +415,14 @@ export async function manualAssign(
   const { data: program } = await db().from('programs').select('*').eq('id', a.program_id).single()
   const period = periodFor(program as Program, today)
   if (!period) throw new Error('프로그램 대여기간이 설정되지 않았습니다.')
+
+  // R14-2: 접속 링크가 없는 좌석은 자동·수동 모두 배정 대상이 아니다.
+  const { data: sec } = await db()
+    .from('account_secrets')
+    .select('access_url')
+    .eq('account_id', accountId)
+    .maybeSingle()
+  if (!sec?.access_url) throw new Error('접속 링크가 등록되지 않은 계정은 배정할 수 없습니다.')
 
   const { data: claimed } = await db()
     .from('accounts')
