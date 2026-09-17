@@ -43,8 +43,8 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker
 |---|---|
 | R1·R6 프로그램 채번·시드 | `lib/ids.ts`, `lib/seed-data.ts`, `app/admin/actions.ts:programSeedAction` |
 | R2·R15 대여기간 | `lib/assign.ts:periodFor / isAssignable` |
-| R3 공개 프로그램 목록 | `lib/assign.ts:isOpenForApply`, `app/api/public/programs` |
-| R4 프로그램 자동 종료 | `lib/ops/assignments.ts:closeFinishedPrograms` |
+| R3 공개 프로그램 목록·상태별 표시 | `lib/assign.ts:applyAvailability / isOpenForApply`, `app/api/public/programs` |
+| R4 프로그램 자동 종료 | 폐지 — 상태(시작전·진행중·완료) 전환은 관리자 드롭다운 수동 `app/admin/actions.ts:programStatusAction` |
 | R5 배정상한 | `lib/assign.ts:capRemaining` |
 | R7~R11 신청 접수 | `lib/ops/apply.ts`, `app/api/public/apply` |
 | R12·R14 자동 배정 | `lib/assign.ts:planAllocations`, `lib/ops/assignments.ts:autoAssignProgram` |

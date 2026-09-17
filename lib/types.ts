@@ -7,7 +7,7 @@ export type AccountStatus = '가용' | '배정' | '회수중' | '정지' | '만�
 export type PasswordStatus = '정상' | '변경대기'
 export type ProgramTarget = '교원' | '직원' | '학생' | '지역민' | '혼합'
 export type ProgramMode = '고정기간' | '배정일기준'
-export type ProgramStatus = '진행' | '종료'
+export type ProgramStatus = '시작전' | '진행중' | '완료'
 export type UserType = '교원' | '직원' | '학생' | '지역민'
 export type AssignmentStatus =
   | '신청' | '승인' | '배정' | '사용중' | '회수중' | '회수완료' | '반려' | '취소' | '인수기한초과'

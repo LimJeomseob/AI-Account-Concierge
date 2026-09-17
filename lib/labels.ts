@@ -86,9 +86,10 @@ export const STATUS_BADGE: Record<string, string> = {
   가용: 'bg-green-100 text-green-700 border-green-200',
   정지: 'bg-red-100 text-red-700 border-red-200',
   만료: 'bg-slate-100 text-slate-500 border-slate-200',
+  // 프로그램 (시작전 → 진행중 → 완료)
+  시작전: 'bg-amber-100 text-amber-800 border-amber-200',
+  진행중: 'bg-green-100 text-green-700 border-green-200',
   // 기타
-  진행: 'bg-green-100 text-green-700 border-green-200',
-  종료: 'bg-slate-100 text-slate-500 border-slate-200',
   정상: 'bg-green-100 text-green-700 border-green-200',
   변경대기: 'bg-amber-100 text-amber-800 border-amber-200',
   접수: 'bg-blue-100 text-blue-700 border-blue-200',

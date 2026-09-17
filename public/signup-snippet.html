@@ -103,7 +103,9 @@
   var API_BASE = 'https://<your-vercel-app>.vercel.app';
 
   var EDU_URL_DEFAULT = 'https://www.youtube.com/watch?v=XzMC4jGM_P0&t=2s';
-  // 신청 페이지 고정 24개 (PRD §9-1). 백엔드에 없거나 대여기간 미설정이면 「접수 준비 중」으로 비활성.
+  // 신청 페이지 고정 24개 (PRD §9-1). 표시 문구는 백엔드 응답(open/label)이 결정:
+  //   시작전 → 「접수 준비 중」, 진행중+기간 미설정 → 「접수 준비 중(대여기간 미설정)」,
+  //   완료 → 「접수 종료」, 백엔드에 없으면 「미등록」. 진행중+기간 설정만 선택 가능.
   var GROUPS = [
     ['학생교육', ['초·중급 온라인 특강 2차','초·중급 온라인 특강 3차','초·중급 온라인 특강 4차','중·고급 GNU AI Pioneer','중급 프로젝트 중심 AI 활용 캠프','고급 프로젝트 중심 AI 활용 캠프','중·고급 워크숍 2차','중·고급 워크숍 3차']],
     ['교원교육', ['초·중·고급 AI활용 연구모임 운영','AXIS 인증 교수법 워크숍']],
@@ -114,7 +116,7 @@
   ];
 
   var $ = function (id) { return document.getElementById(id); };
-  var open = {};   // 프로그램명 → {id, period}
+  var open = {};   // 프로그램명 → {id, open, label, period, ...} (API 응답 항목)
   var eduUrl = EDU_URL_DEFAULT;
 
   function buildOptions() {
@@ -127,8 +129,9 @@
         var o = document.createElement('option');
         var info = open[name];
         o.value = name;
-        o.textContent = info ? name : name + ' — 접수 준비 중';
-        o.disabled = !info;
+        var ok = !!(info && info.open);
+        o.textContent = ok ? name : name + ' — ' + (info ? info.label : '미등록');
+        o.disabled = !ok;
         og.appendChild(o);
       });
       sel.appendChild(og);
@@ -161,7 +164,7 @@
 
   $('gnu-program').addEventListener('change', function () {
     var info = open[this.value];
-    $('gnu-period').textContent = '대여기간: ' + (info ? info.period : '-');
+    $('gnu-period').textContent = '대여기간: ' + (info && info.open ? info.period : '-');
   });
 
   function popup(html) {

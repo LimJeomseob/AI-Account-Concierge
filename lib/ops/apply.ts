@@ -4,7 +4,7 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
-import { periodFor } from '@/lib/assign'
+import { applyAvailability, periodFor } from '@/lib/assign'
 import { nextAssignmentId, nextUserId } from '@/lib/ids'
 import { queueIntakeMail } from '@/lib/mail/queue'
 import { log } from '@/lib/state'
@@ -41,10 +41,12 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     program = (data as Program) ?? null
   }
   if (!program) return { ok: false, msg: '아직 등록되지 않은 프로그램입니다. 담당자에게 문의해 주세요.' }
-  if (program.status === '종료') return { ok: false, msg: '종료된 프로그램입니다.' }
-
+  // R3: 신청 페이지 표시와 같은 판정을 쓴다 (lib/assign.ts:applyAvailability)
+  const avail = applyAvailability(program, today)
+  if (avail.reason === '시작전') return { ok: false, msg: '아직 접수를 시작하지 않은 프로그램입니다.' }
+  if (avail.reason === '완료') return { ok: false, msg: '종료된 프로그램입니다.' }
   const period = periodFor(program, today)
-  if (!period) return { ok: false, msg: '접수 준비 중(대여기간 미설정)인 프로그램입니다.' }
+  if (!avail.open || !period) return { ok: false, msg: '접수 준비 중(대여기간 미설정)인 프로그램입니다.' }
 
   // R9: 이메일 소문자 정규화 + 같은 프로그램 활성 중복 거부
   const email = input.email.trim().toLowerCase()

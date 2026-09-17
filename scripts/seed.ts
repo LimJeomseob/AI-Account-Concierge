@@ -82,7 +82,7 @@ async function main() {
         mode: '고정기간',
         days: 0,
         cap: 0,
-        status: '진행',
+        status: '시작전',
         note: `${p.group} / ${p.season} / 대여기간 입력 필요`,
       })
       if (error) throw new Error(`programs.${p.name}: ${error.message}`)

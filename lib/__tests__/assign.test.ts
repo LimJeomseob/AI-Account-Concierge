@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyAvailability,
   assignedDaysOf,
   capRemaining,
   isAccountEligible,
@@ -11,8 +12,8 @@ import {
   type QueueItem,
 } from '@/lib/assign'
 
-const fixed = { mode: '고정기간' as const, days: 0, start_on: '2026-09-01', end_on: '2026-09-30', status: '진행' as const }
-const rolling = { mode: '배정일기준' as const, days: 30, start_on: null, end_on: null, status: '진행' as const }
+const fixed = { mode: '고정기간' as const, days: 0, start_on: '2026-09-01', end_on: '2026-09-30', status: '진행중' as const }
+const rolling = { mode: '배정일기준' as const, days: 30, start_on: null, end_on: null, status: '진행중' as const }
 
 describe('periodFor (R2·R15)', () => {
   it('고정기간은 프로그램 시작·종료일을 그대로 쓴다', () => {
@@ -30,15 +31,63 @@ describe('periodFor (R2·R15)', () => {
 })
 
 describe('isOpenForApply / isAssignable (R3·R15)', () => {
-  it('종료된 프로그램은 접수·배정 대상이 아니다', () => {
-    const closed = { ...fixed, status: '종료' as const }
+  it('완료된 프로그램은 접수·배정 대상이 아니다', () => {
+    const closed = { ...fixed, status: '완료' as const }
     expect(isOpenForApply(closed, '2026-09-04')).toBe(false)
     expect(isAssignable(closed, '2026-09-04')).toBe(false)
+  })
+
+  it('시작전 프로그램은 기간이 있어도 접수·배정 대상이 아니다', () => {
+    const notStarted = { ...fixed, status: '시작전' as const }
+    expect(isOpenForApply(notStarted, '2026-09-04')).toBe(false)
+    expect(isAssignable(notStarted, '2026-09-04')).toBe(false)
+  })
+
+  it('진행중 + 기간 설정만 접수 가능', () => {
+    expect(isOpenForApply(fixed, '2026-09-04')).toBe(true)
+    expect(isOpenForApply(rolling, '2026-09-04')).toBe(true)
+    expect(isOpenForApply({ ...fixed, start_on: null }, '2026-09-04')).toBe(false)
   })
 
   it('고정기간 프로그램은 종료일이 지나면 배정 대상에서 빠진다', () => {
     expect(isOpenForApply(fixed, '2026-10-05')).toBe(true)
     expect(isAssignable(fixed, '2026-10-05')).toBe(false)
+  })
+})
+
+describe('applyAvailability (R3: 프로그램 상태 ↔ 신청 페이지 표시)', () => {
+  it('시작전 → 접수 준비 중', () => {
+    expect(applyAvailability({ ...fixed, status: '시작전' }, '2026-09-04')).toMatchObject({
+      open: false,
+      reason: '시작전',
+      label: '접수 준비 중',
+    })
+  })
+
+  it('진행중 + 기간 미설정 → 접수 준비 중(대여기간 미설정)', () => {
+    expect(applyAvailability({ ...fixed, start_on: null }, '2026-09-04')).toMatchObject({
+      open: false,
+      reason: '기간미설정',
+      label: '접수 준비 중(대여기간 미설정)',
+    })
+  })
+
+  it('진행중 + 기간 설정 → 접수 가능, 대여기간 문구', () => {
+    expect(applyAvailability(fixed, '2026-09-04')).toEqual({
+      open: true,
+      reason: null,
+      label: '',
+      period: '2026-09-01 ~ 2026-09-30',
+    })
+    expect(applyAvailability(rolling, '2026-09-04').period).toBe('배정일부터 30일')
+  })
+
+  it('완료 → 접수 종료', () => {
+    expect(applyAvailability({ ...rolling, status: '완료' }, '2026-09-04')).toMatchObject({
+      open: false,
+      reason: '완료',
+      label: '접수 종료',
+    })
   })
 })
 

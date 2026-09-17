@@ -118,7 +118,7 @@
 - `*_enc`는 AES-256-GCM(키 = 환경변수 `VAULT_KEY`, 32바이트 base64)으로 애플리케이션 계층에서 암호화. 복호화는 서버에서만, 관리자 화면에서 「보기」 클릭 시 복호화 + `logs`에 열람 기록 (제안, High).
 
 **programs**
-`id text PK`(P26-01…), `name text unique`, `target`(교원|직원|학생|지역민|혼합), `mode`(고정기간|배정일기준), `days int`, `start_on date`, `end_on date`, `cap int default 0`(0=무제한), `status`(진행|종료), `note`, `created_at`
+`id text PK`(P26-01…), `name text unique`, `target`(교원|직원|학생|지역민|혼합), `mode`(고정기간|배정일기준), `days int`, `start_on date`, `end_on date`, `cap int default 0`(0=무제한), `status`(시작전|진행중|완료 — 모든 전환은 관리자 드롭다운 수동), `note`, `created_at`
 - 파생(뷰 `program_availability`): `avail_gpt`, `avail_claude` = 만료일 ≥ 대여종료일(배정일기준은 오늘+days)인 「가용·운영」 계정 수.
 
 **users** — 참여자(개인정보)
@@ -180,8 +180,16 @@
 **프로그램**
 - R1. 프로그램ID는 `program_id_prefix`-NN 자동 채번. 프로그램명 유일.
 - R2. 대여방식 = 고정기간(start_on~end_on, 전원 동일) 또는 배정일기준(배정일부터 days일, 개인별).
-- R3. 신청 페이지 드롭다운은 페이지에 고정(24개, §9-1). 공개 API `GET /api/public/programs`는 상태 「진행」이고 대여기간이 설정된(고정기간: 시작·종료일, 배정일기준: days>0) 프로그램만 반환. 페이지는 이 응답으로 대여기간을 표시하고 미등록·미설정·종료 프로그램은 「접수 준비 중」으로 비활성화.
-- R4. 고정기간 프로그램은 end_on 경과 시 일일 작업이 「종료」 처리.
+- R3. 신청 페이지 드롭다운은 페이지에 고정(24개, §9-1). 공개 API `GET /api/public/programs`는 전체 프로그램을 반환하되 항목마다 `status`·`open`·`reason`·`label`·`period`를 붙인다(`lib/assign.ts:applyAvailability`). 접수 가능 = 상태 「진행중」이고 대여기간이 설정된(고정기간: 시작·종료일, 배정일기준: days>0) 프로그램뿐이며, 그 외는 사유와 함께 비활성화한다.
+  | 프로그램 상태 | 대여기간 | 드롭다운 표시 | 선택 |
+  |---|---|---|---|
+  | 시작전 | 무관 | `이름 — 접수 준비 중` | ✕ |
+  | 진행중 | 미설정 | `이름 — 접수 준비 중(대여기간 미설정)` | ✕ |
+  | 진행중 | 설정 | `이름` + 대여기간 표시 | ○ |
+  | 완료 | 무관 | `이름 — 접수 종료` | ✕ |
+  | 미등록 | — | `이름 — 미등록` | ✕ |
+  접수 API(R7~R11)도 같은 판정을 써서 표시와 실제 접수 가부가 어긋나지 않는다.
+- R4. **폐지(2026-09-17).** 프로그램 상태 전환(시작전 → 진행중 → 완료)은 관리자가 프로그램 목록의 드롭다운으로 직접 바꾼다. 종료일 경과 시 자동 종료는 하지 않는다. (구: 고정기간 프로그램은 end_on 경과 시 일일 작업이 「종료」 처리)
 - R5. 배정상한(cap): 배정·사용중·회수중·회수완료 건수 합이 cap에 도달하면 추가 배정 없이 승인 대기.
 - R6. 2026 하반기 교육계획 24개 프로그램을 일괄 등록하는 시드 기능(이름 중복 시 생략, 대여기간·상한은 비움).
 
@@ -378,10 +386,10 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 인증: 헤더 `Authorization: Bearer ${CRON_SECRET}` 검증. 관리자 화면 「일일 작업 지금 실행」 버튼도 같은 함수 호출.
 
 `/api/cron/daily` 순서(트랜잭션 단위로 분리, 각 단계 로그):
-1. 고정기간 프로그램 자동 종료(R4)
+1. (폐지) 프로그램 자동 종료 — R4 폐지, 상태 전환은 관리자 수동
 2. 미인수 자동 취소(R19)
 3. 대여 종료 → 회수중(R20) + 신규 비밀번호 생성(R21) + alerts·accounts.alert 재생성(R22)
-4. 승인 대기 자동 배정(R14, 모든 진행 프로그램)
+4. 승인 대기 자동 배정(R14, 모든 「진행중」 프로그램)
 5. 메일 대기열 발송(일일 한도 고려, 실패 재시도)
 6. 계정 통계 갱신(R25)
 7. 구독 만료 D-`account_expiry_alert_days` 계정 표시, 만료일 경과 계정 → 만료
@@ -396,7 +404,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 ### 12-1. 공개(CORS: `signup_origins`만 허용, `OPTIONS` 처리)
 | 메서드·경로 | 요청 | 응답 |
 |---|---|---|
-| GET `/api/public/programs` | — | `{ok, programs:[{id,name,target,period,mode,days,start,end}], eduUrl, privacy:{items,purpose,period}}` (R3 필터) |
+| GET `/api/public/programs` | — | `{ok, programs:[{id,name,target,mode,days,start,end,status,open,reason,label,period}], eduUrl, privacy:{items,purpose,period}}` (전체 프로그램, R3 표) |
 | POST `/api/public/apply` | `{programId, programName, name, affiliation, type, email, phone, service, hasPaid, pledge, privacy, eduWatched, eduWatchedAt}` | 성공 `{ok:true, id, period}` / 실패 `{ok:false, msg}` (R7~R11) |
 | GET `/ack?id&t` | — | HTML 페이지(R18) |
 | GET/POST `/incident?id&t` | 폼 | HTML 페이지(R26) |
@@ -516,3 +524,11 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 | 프로그램 목록 | 하반기 교육계획 24개, 신청 페이지 드롭다운 고정 |
 | 신청 완료 UX | 입력 내역 전부 삭제 + 팝업 안내 |
 | 재구축 스택 | Next.js + Supabase + Vercel, Google 로그인, DB 금고, GitHub Pages 삽입 |
+
+---
+
+## 18. 변경 이력
+
+| 일자 | 변경 | 사유 |
+|---|---|---|
+| 2026-09-17 | 프로그램 상태 「진행\|종료」 → 「시작전\|진행중\|완료」 3단계, 목록 드롭다운으로 즉시 전환. R4(자동 종료) 폐지, R3 을 상태별 표시 표로 개정. 마이그레이션 `0002_program_status.sql`(기존 기간 미설정 프로그램 → 시작전) | 관리자 요청 — 접수 개시·종료 시점을 담당자가 직접 통제 |

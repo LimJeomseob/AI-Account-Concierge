@@ -12,6 +12,7 @@ import { log } from '@/lib/state'
 import { nextProgramId } from '@/lib/ids'
 import { getSettings, setSetting, type Settings } from '@/lib/settings'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
+import type { ProgramStatus } from '@/lib/types'
 import {
   acknowledge,
   approveAssignments,
@@ -126,7 +127,7 @@ export async function programSaveAction(fd: FormData) {
     start_on: str(fd, 'start_on') || null,
     end_on: str(fd, 'end_on') || null,
     cap: num(fd, 'cap'),
-    status: str(fd, 'status') || '진행',
+    status: parseProgramStatus(str(fd, 'status')) ?? '시작전',
     note: str(fd, 'note') || null,
   }
   const { error } = await db().from('programs').upsert(row, { onConflict: 'id' })
@@ -151,7 +152,7 @@ export async function programSeedAction() {
       mode: '고정기간',
       days: 0,
       cap: 0,
-      status: '진행',
+      status: '시작전',
       note: `${p.group} / ${p.season} / 대여기간 입력 필요`,
     })
     if (error) throw new Error(error.message)
@@ -161,12 +162,25 @@ export async function programSeedAction() {
   revalidatePath('/admin/programs')
 }
 
-export async function programCloseAction(fd: FormData) {
+const PROGRAM_STATUSES: readonly ProgramStatus[] = ['시작전', '진행중', '완료']
+
+function parseProgramStatus(v: string): ProgramStatus | null {
+  return (PROGRAM_STATUSES as readonly string[]).includes(v) ? (v as ProgramStatus) : null
+}
+
+/** 프로그램 상태 전환 (시작전·진행중·완료) — 목록 드롭다운에서 즉시 저장. 모든 전환은 관리자 수동 */
+export async function programStatusAction(fd: FormData) {
   const actor = await requireAdminAction()
   const id = str(fd, 'id')
-  await db().from('programs').update({ status: '종료' }).eq('id', id)
-  await log(actor, 'program.close', id, {})
+  const status = parseProgramStatus(str(fd, 'status'))
+  if (!id || !status) throw new Error('잘못된 상태 값입니다.')
+  const { data: before } = await db().from('programs').select('status').eq('id', id).maybeSingle()
+  const { error } = await db().from('programs').update({ status }).eq('id', id)
+  if (error) throw new Error(error.message)
+  await log(actor, 'program.status', id, { from: before?.status ?? null, to: status })
   revalidatePath('/admin/programs')
+  revalidatePath('/admin/dashboard')
+  revalidatePath('/apply')
 }
 
 // --- 계정 -------------------------------------------------------------------

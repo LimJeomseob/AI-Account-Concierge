@@ -11,18 +11,12 @@ import { dispatchQueue } from '@/lib/mail/dispatch'
 import { queueAdminMail } from '@/lib/mail/queue'
 import { decrypt } from '@/lib/crypto'
 import { log } from '@/lib/state'
-import {
-  autoAssignAll,
-  closeFinishedPrograms,
-  endExpiredRentals,
-  expireUnacknowledged,
-} from '@/lib/ops/assignments'
+import { autoAssignAll, endExpiredRentals, expireUnacknowledged } from '@/lib/ops/assignments'
 import { processExpiries, refreshAccountStats } from '@/lib/ops/accounts'
 import { suspensionRate } from '@/lib/ops/incidents'
 
 export interface DailyResult {
   today: string
-  closed_programs: string[]
   ack_overdue: string[]
   rent_ended: string[]
   assigned: string[]
@@ -39,8 +33,7 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
   const s = await getSettings()
   await log(actor, 'cron.daily.start', null, { today })
 
-  // 1. 고정기간 프로그램 자동 종료 (R4)
-  const closed = await closeFinishedPrograms(today)
+  // 1. (폐지) 프로그램 자동 종료 — 상태 전환은 관리자 드롭다운 수동 (구 R4)
 
   // 2. 미인수 자동 취소 (R19)
   const ackOverdue = await expireUnacknowledged(s.ack_due_days, today)
@@ -80,7 +73,6 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
 
   const result: DailyResult = {
     today,
-    closed_programs: closed,
     ack_overdue: ackOverdue,
     rent_ended: rentEnded,
     assigned,

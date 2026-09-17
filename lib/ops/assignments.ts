@@ -126,7 +126,7 @@ export async function autoAssignProgram(
 
 /** 진행 중인 모든 프로그램에 대해 자동 배정 (일일 작업 4단계) */
 export async function autoAssignAll(actor: string, today: string = todayKST()): Promise<string[]> {
-  const { data: programs } = await db().from('programs').select('id').eq('status', '진행')
+  const { data: programs } = await db().from('programs').select('id').eq('status', '진행중')
   const out: string[] = []
   for (const p of programs ?? []) {
     out.push(...(await autoAssignProgram(p.id, actor, today)))
@@ -383,7 +383,7 @@ export async function completeReturn(
 
   // 회수 즉시 재배정 (해당 프로그램 우선 → 나머지 진행 프로그램)
   const reassigned = await autoAssignProgram(a.program_id, actor, today)
-  const { data: others } = await db().from('programs').select('id').eq('status', '진행').neq('id', a.program_id)
+  const { data: others } = await db().from('programs').select('id').eq('status', '진행중').neq('id', a.program_id)
   for (const p of others ?? []) reassigned.push(...(await autoAssignProgram(p.id, actor, today)))
   return { reassigned }
 }
@@ -450,23 +450,4 @@ export async function manualAssign(
       .update({ notified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', assignmentId)
   }
-}
-
-/** R4: 고정기간 프로그램 자동 종료 (일일 작업 1단계) */
-export async function closeFinishedPrograms(today: string = todayKST()): Promise<string[]> {
-  const { data: rows } = await db()
-    .from('programs')
-    .select('id, end_on')
-    .eq('status', '진행')
-    .eq('mode', '고정기간')
-    .not('end_on', 'is', null)
-    .lt('end_on', today)
-
-  const out: string[] = []
-  for (const p of rows ?? []) {
-    await db().from('programs').update({ status: '종료' }).eq('id', p.id)
-    await log('system', 'program.close', p.id, { end_on: p.end_on })
-    out.push(p.id)
-  }
-  return out
 }

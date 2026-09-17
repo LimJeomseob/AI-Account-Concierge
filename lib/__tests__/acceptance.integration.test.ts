@@ -92,7 +92,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
         mode: '배정일기준',
         days: 30,
         cap: 0,
-        status: '진행',
+        status: '진행중',
       },
       {
         id: PROG_NOPERIOD,
@@ -101,7 +101,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
         mode: '고정기간',
         days: 0,
         cap: 0,
-        status: '진행',
+        status: '진행중',
       },
     ])
 
@@ -390,7 +390,6 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     const first = await M.daily.runDaily('acceptance@test', today)
     const second = await M.daily.runDaily('acceptance@test', today)
 
-    expect(second.closed_programs).toHaveLength(0)
     expect(second.ack_overdue).toHaveLength(0)
     expect(second.rent_ended).toHaveLength(0)
     expect(second.alerts).toBe(first.alerts)

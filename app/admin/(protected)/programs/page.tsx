@@ -1,8 +1,9 @@
 /** 프로그램 (PRD §7-2, R1~R6) */
 import { db } from '@/lib/db'
-import { Badge, Button, Card, Table, Td, inputClass } from '@/components/ui'
+import { Button, Card, Table, Td, inputClass } from '@/components/ui'
 import { L } from '@/lib/labels'
-import { programCloseAction, programSaveAction, programSeedAction } from '@/app/admin/actions'
+import { programSaveAction, programSeedAction } from '@/app/admin/actions'
+import StatusSelect, { PROGRAM_STATUSES } from './StatusSelect'
 import type { Program } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -33,7 +34,7 @@ export default async function ProgramsPage() {
         <Table
           head={[
             L.program.id, L.program.name, L.program.target, L.program.mode, '대여기간',
-            L.program.cap, '배정 현황', '배정가능(GPT/CL)', L.program.status, '',
+            L.program.cap, '배정 현황', '배정가능(GPT/CL)', L.program.status,
           ]}
         >
           {((programs ?? []) as Program[]).map((p) => {
@@ -59,15 +60,8 @@ export default async function ProgramsPage() {
                   {a ? `${a.avail_gpt} / ${a.avail_claude}` : '-'}
                 </Td>
                 <Td>
-                  <Badge value={p.status} />
-                </Td>
-                <Td>
-                  {p.status === '진행' && (
-                    <form action={programCloseAction}>
-                      <input type="hidden" name="id" value={p.id} />
-                      <Button variant="ghost">종료</Button>
-                    </form>
-                  )}
+                  {/* 시작전 → 진행중 → 완료: 드롭다운으로 즉시 저장 (모든 전환은 관리자 수동) */}
+                  <StatusSelect id={p.id} value={p.status} />
                 </Td>
               </tr>
             )
@@ -120,9 +114,10 @@ export default async function ProgramsPage() {
           </label>
           <label className="text-sm">
             <span className="text-xs text-slate-600">{L.program.status}</span>
-            <select name="status" className={inputClass}>
-              <option>진행</option>
-              <option>종료</option>
+            <select name="status" defaultValue="시작전" className={inputClass}>
+              {PROGRAM_STATUSES.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
             </select>
           </label>
           <label className="text-sm sm:col-span-2">

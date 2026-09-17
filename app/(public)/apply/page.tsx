@@ -1,7 +1,7 @@
 /** 자체 신청 페이지 (PRD §7-1 /apply — GitHub Pages 장애 시 대체) */
 import ApplyForm from './ApplyForm'
 import { db } from '@/lib/db'
-import { isOpenForApply, periodFor } from '@/lib/assign'
+import { applyAvailability } from '@/lib/assign'
 import { todayKST } from '@/lib/date'
 import { getSettings } from '@/lib/settings'
 import type { Program } from '@/lib/types'
@@ -12,19 +12,10 @@ export default async function ApplyPage() {
   const today = todayKST()
   const s = await getSettings()
   const { data } = await db().from('programs').select('*').order('id')
+  // R3: 프로그램 상태(시작전·진행중·완료) ↔ 드롭다운 표시는 applyAvailability 가 결정
   const programs = ((data ?? []) as Program[]).map((p) => {
-    const open = isOpenForApply(p, today)
-    const period = open ? periodFor(p, today)! : null
-    return {
-      id: p.id,
-      name: p.name,
-      open,
-      period: period
-        ? p.mode === '고정기간'
-          ? `${period.start} ~ ${period.end}`
-          : `배정일부터 ${p.days}일`
-        : '접수 준비 중',
-    }
+    const a = applyAvailability(p, today)
+    return { id: p.id, name: p.name, open: a.open, label: a.label, period: a.period }
   })
 
   return (
