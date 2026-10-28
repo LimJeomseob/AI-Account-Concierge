@@ -33,7 +33,25 @@ export function canTransitionAccount(from: AccountStatus, to: AccountStatus): bo
   return from === to || ACCOUNT_TRANSITIONS[from].includes(to)
 }
 
+/**
+ * 관리자가 「계정 상태 변경」으로 직접 고를 수 있는 전이 (ACCOUNT_TRANSITIONS 의 부분집합).
+ * 「배정」·「회수중」은 배정·대여 종료·취소가 만드는 시스템 상태라 손으로 만들지 않는다
+ * (연결된 신청 건 없이 「배정」이 되거나, 회수 체크리스트(R24) 없이 「회수중 → 가용」이 되는 것 방지).
+ * 배정·회수중 좌석의 구독 만료는 회수를 끝낸 뒤 처리한다.
+ */
+export const MANUAL_ACCOUNT_TRANSITIONS: Record<AccountStatus, AccountStatus[]> = {
+  가용: ['정지', '만료'],
+  배정: ['정지'], // 장애로 접속 불가 — 연결된 건은 장애 메뉴에서 대체 배정
+  회수중: ['정지'],
+  정지: ['가용', '만료'], // 가용은 이 좌석을 쥔 활성 배정이 없을 때만 (app/admin/actions.ts)
+  만료: ['가용'],
+}
+
+export function canManuallySetAccount(from: AccountStatus, to: AccountStatus): boolean {
+  return MANUAL_ACCOUNT_TRANSITIONS[from].includes(to)
+}
+
 /** 현재 상태에서 관리자가 고를 수 있는 계정 상태(현재 상태 포함, PRD §5-2 순서 유지) */
 export function accountStatusOptions(from: AccountStatus): AccountStatus[] {
-  return [from, ...ACCOUNT_TRANSITIONS[from]]
+  return [from, ...MANUAL_ACCOUNT_TRANSITIONS[from]]
 }

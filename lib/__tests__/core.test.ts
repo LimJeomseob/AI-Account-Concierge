@@ -7,7 +7,11 @@ import { canTransitionAccount, canTransitionAssignment } from '@/lib/state'
 import { toCsv } from '@/lib/report'
 import { applicantCsv, applicantEmails, exportQuery } from '@/lib/ops/export'
 import { acceptanceEnabled } from './integration-guard'
-import { digestErrorLines } from '@/lib/cron/daily'
+import { digestErrorLines, mailStopNote } from '@/lib/cron/daily'
+import { classifyMailError } from '@/lib/mail/dispatch'
+import { assignedDaysOf } from '@/lib/assign'
+import { accountStatusOptions, canManuallySetAccount } from '@/lib/transitions'
+import { incidentToken, verifyIncidentToken } from '@/lib/token'
 import { sign, verify } from '@/lib/token'
 import { normalizeUrl, parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
 
@@ -207,5 +211,50 @@ describe('일일 작업 오류 요약 (R32)', () => {
     expect(lines[1]).toBe('  - [자동 배정] timeout')
     expect(lines[2]).toBe('  - [메일 발송] 535 auth')
     expect(lines.at(-1)).toBe('')
+  })
+})
+
+describe('메일 오류 분류 (§8 Gmail SMTP)', () => {
+  it('인증 실패는 auth — 즉시 중단', () => {
+    expect(classifyMailError({ code: 'EAUTH', message: 'Invalid login' })).toBe('auth')
+    expect(classifyMailError('535-5.7.8 Username and Password not accepted')).toBe('auth')
+    expect(classifyMailError({ message: '454-4.7.0 Too many login attempts, please try again later', code: 'EAUTH' })).toBe('auth')
+  })
+  it('일일 한도·임시 차단은 limit', () => {
+    expect(classifyMailError('550 5.4.5 Daily user sending limit exceeded')).toBe('limit')
+    expect(classifyMailError('421 4.7.0 Temporary System Problem')).toBe('limit')
+  })
+  it('그 밖의 오류와 막연한 too many 는 retry', () => {
+    expect(classifyMailError('550 5.1.1 The email account that you tried to reach does not exist')).toBe('retry')
+    expect(classifyMailError('too many recipients in this message')).toBe('retry')
+    expect(classifyMailError({ code: 'ETIMEDOUT', message: 'Connection timeout' })).toBe('retry')
+  })
+  it('발송 중단 사유 표시', () => {
+    expect(mailStopNote(undefined)).toBe('')
+    expect(mailStopNote('locked')).toBe('')
+    expect(mailStopNote('auth')).toContain('GMAIL_APP_PASSWORD')
+    expect(mailStopNote('limit')).toContain('한도')
+  })
+})
+
+describe('2단계 보완 (R24·R25·R33·R26)', () => {
+  it('배정일수 — returned_at 은 KST 날짜로 자른다', () => {
+    // 2026-10-27T16:00Z = KST 10-28 01:00 회수 → 10-26~10-28 = 3일 (UTC 로 자르면 2일)
+    const rows = [{ status: '회수완료', assigned_on: '2026-10-26', rent_start: '2026-10-26', rent_end: '2026-11-30', returned_at: '2026-10-27T16:00:00Z' }]
+    expect(assignedDaysOf(rows, '2026-10-29')).toBe(3)
+  })
+  it('수동 계정 상태 변경 — 배정·회수중 만들기와 회수 체크리스트 우회 금지', () => {
+    expect(canManuallySetAccount('가용', '배정')).toBe(false)
+    expect(canManuallySetAccount('정지', '회수중')).toBe(false)
+    expect(canManuallySetAccount('회수중', '가용')).toBe(false)
+    expect(canManuallySetAccount('배정', '만료')).toBe(false)
+    expect(canManuallySetAccount('배정', '정지')).toBe(true)
+    expect(canManuallySetAccount('정지', '가용')).toBe(true)
+    expect(accountStatusOptions('회수중')).toEqual(['회수중', '정지'])
+  })
+  it('토큰 검증 — 문자 수가 같은 멀티바이트 입력도 예외 없이 거부', () => {
+    const t = incidentToken('A261028-0001')
+    expect(verifyIncidentToken('A261028-0001', t)).toBe(true)
+    expect(verifyIncidentToken('A261028-0001', '가'.repeat(t.length))).toBe(false)
   })
 })

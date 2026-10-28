@@ -31,7 +31,6 @@ export default async function ReportsPage() {
         <Stat label="평균 회전율(회)" value={s.turnover_avg} />
         <Stat label="현재 대기 인원" value={s.waiting_cnt} />
         <Stat label="평균 대기일수" value={s.waiting_days_avg ?? '-'} />
-        <Stat label="미인수율(%)" value={s.no_ack_rate ?? '-'} />
         <Stat label="정지율(%)" value={s.suspension_rate} />
       </div>
 
@@ -70,7 +69,7 @@ export default async function ReportsPage() {
         <Table
           head={[
             '프로그램', '대상', '신청', '승인', '배정', '사용 인원', '회수완료', 'GPT', 'Claude',
-            '인수기한초과', '회수 완료율', '대기', '승인→배정(평균/최대)',
+            '회수 완료율', '대기', '승인→배정(평균/최대)',
           ]}
         >
           {programs.map((p) => (
@@ -84,7 +83,6 @@ export default async function ReportsPage() {
               <Td>{p.returned_cnt}</Td>
               <Td>{p.used_gpt}</Td>
               <Td>{p.used_claude}</Td>
-              <Td>{p.ack_overdue_cnt}</Td>
               <Td>{p.return_rate ?? '-'}</Td>
               <Td>{p.waiting_cnt}</Td>
               <Td className="text-xs">

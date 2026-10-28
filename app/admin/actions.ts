@@ -11,7 +11,7 @@ import { todayKST } from '@/lib/date'
 import { log } from '@/lib/state'
 import { nextProgramId } from '@/lib/ids'
 import { getSettings, setSetting, type Settings } from '@/lib/settings'
-import { CHECKLIST_FIELDS, PROGRAM_STATUSES, PURGE_ALL_CONFIRM } from '@/lib/labels'
+import { CHECKLIST_FIELDS, PROGRAM_STATUSES } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
 import {
   approveAssignments,
@@ -24,12 +24,11 @@ import {
 } from '@/lib/ops/assignments'
 import { importAccounts, parseAccountCsv, setAccessUrl } from '@/lib/ops/accounts'
 import { replaceAccount } from '@/lib/ops/incidents'
-import { purgeUsers } from '@/lib/ops/privacy'
 import { runDaily } from '@/lib/cron/daily'
 import { runMonthly } from '@/lib/cron/monthly'
 import { sendTestMail } from '@/lib/mail/dispatch'
 import { transitionAccount } from '@/lib/state'
-import { ACCOUNT_TRANSITIONS, canTransitionAccount } from '@/lib/transitions'
+import { MANUAL_ACCOUNT_TRANSITIONS, canManuallySetAccount } from '@/lib/transitions'
 import { PROGRAM_SEED } from '@/lib/seed-data'
 import type { AccountStatus, IncidentStatus } from '@/lib/types'
 
@@ -239,20 +238,36 @@ export async function accountStatusAction(
 
   const from = row.status as AccountStatus
   if (from === to) return { ok: true, msg: `${id} 은(는) 이미 「${to}」 입니다.` }
-  if (!canTransitionAccount(from, to)) {
+  if (!canManuallySetAccount(from, to)) {
+    const allowed = MANUAL_ACCOUNT_TRANSITIONS[from]
     return {
       ok: false,
-      msg: `「${from}」 → 「${to}」 로는 바꿀 수 없습니다. ${id} 에서 가능한 상태: ${ACCOUNT_TRANSITIONS[from].join('·')}`,
+      msg: `「${from}」 → 「${to}」 는 직접 바꿀 수 없습니다(배정·회수는 신청·배정 화면에서 처리). ${id} 에서 가능한 상태: ${allowed.length > 0 ? allowed.join('·') : '없음'}`,
+    }
+  }
+
+  // 정지 → 가용: 이 좌석을 아직 쥐고 있는 활성 배정(회수 미완료)이 있으면 먼저 회수를 끝내야 한다 (R24)
+  if (to === '가용') {
+    const { data: holders } = await db()
+      .from('assignments')
+      .select('id, status')
+      .eq('account_id', id)
+      .in('status', ['배정', '사용중', '회수중', '인수기한초과'])
+    if (holders && holders.length > 0) {
+      const list = holders.map((h) => `${h.id}(${h.status})`).join(', ')
+      return { ok: false, msg: `${id} 을(를) 쥔 신청 건이 있어 가용으로 바꿀 수 없습니다: ${list}. 회수 체크리스트를 완료한 뒤 다시 시도해 주세요.` }
     }
   }
 
   try {
-    await transitionAccount({ id, to, actor, action: 'account.status', detail: { manual: true } })
+    const ok = await transitionAccount({ id, to, actor, action: 'account.status', expect: [from], detail: { manual: true } })
+    if (!ok) return { ok: false, msg: `${id} 의 상태가 그사이 바뀌었습니다. 새로고침 후 다시 시도해 주세요.` }
   } catch (e) {
     return { ok: false, msg: (e as Error).message }
   }
   revalidatePath('/admin/accounts')
-  return { ok: true, msg: `${id}: 「${from}」 → 「${to}」 로 변경했습니다.` }
+  const hint = from === '배정' && to === '정지' ? ' 연결돼 있던 신청 건은 「장애」 메뉴에서 대체 배정해 주세요.' : ''
+  return { ok: true, msg: `${id}: 「${from}」 → 「${to}」 로 변경했습니다.${hint}` }
 }
 
 // --- 장애 -------------------------------------------------------------------
@@ -288,30 +303,6 @@ export async function runDailyAction() {
   revalidatePath('/admin/dashboard')
   revalidatePath('/admin/assignments')
   revalidatePath('/admin/accounts')
-}
-
-// --- 사용자·개인정보 --------------------------------------------------------
-
-/** R30: 선택한 사용자만 파기. 선택이 없으면 거부한다(과거엔 전체 파기로 떨어졌음). */
-export async function purgeAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
-  const actor = await requireAdminAction()
-  const targets = ids(fd)
-  if (targets.length === 0) return { ok: false, msg: '파기할 사용자를 선택해 주세요. 전체 파기는 아래 별도 버튼을 사용합니다.' }
-  const n = await purgeUsers(targets, actor)
-  revalidatePath('/admin/users')
-  return { ok: true, msg: `${n}명의 개인정보를 파기했습니다.` }
-}
-
-/** R30: 미파기 사용자 전체 파기 — 확인 문구(PURGE_ALL_CONFIRM)를 정확히 입력해야 실행된다 */
-export async function purgeAllAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
-  const actor = await requireAdminAction()
-  if (str(fd, 'confirm').trim() !== PURGE_ALL_CONFIRM) {
-    return { ok: false, msg: `확인란에 「${PURGE_ALL_CONFIRM}」 를 정확히 입력해야 실행됩니다.` }
-  }
-  const n = await purgeUsers(null, actor)
-  await log(actor, 'privacy.purge_all', null, { count: n })
-  revalidatePath('/admin/users')
-  return { ok: true, msg: `미파기 사용자 ${n}명 전체의 개인정보를 파기했습니다.` }
 }
 
 // --- 설정 -------------------------------------------------------------------

@@ -11,6 +11,10 @@ import { claimAccount, log, transitionAccount, transitionAssignment } from '@/li
 import { moveAccountToReturning } from '@/lib/ops/assignments'
 import type { IncidentType, Program } from '@/lib/types'
 
+/** 장애 신고를 받을 수 있는 배정 상태 — 좌석을 실제로 쓰는 중인 건만 */
+export const INCIDENT_REPORTABLE = ['사용중', '배정']
+export const INCIDENT_TYPES: IncidentType[] = ['정지', '로그인불가', '기타']
+
 /** R26: 장애 신고 접수 */
 export async function reportIncident(input: {
   assignmentId: string
@@ -20,10 +24,12 @@ export async function reportIncident(input: {
 }): Promise<number> {
   const { data: a } = await db()
     .from('assignments')
-    .select('id, account_id, name, email, programs(name)')
+    .select('id, status, account_id, name, email, programs(name)')
     .eq('id', input.assignmentId)
     .single()
   if (!a) throw new Error(`배정 ${input.assignmentId} 없음`)
+  if (!INCIDENT_REPORTABLE.includes(a.status)) throw new Error('이미 종료된 배정은 장애를 신고할 수 없습니다.')
+  if (!INCIDENT_TYPES.includes(input.type)) throw new Error('알 수 없는 장애 유형입니다.')
 
   const { data: inc, error } = await db()
     .from('incidents')
@@ -39,10 +45,14 @@ export async function reportIncident(input: {
     .single()
   if (error) throw new Error(error.message)
 
-  // 정지 유형이면 계정 상태를 정지로
+  // 정지 유형이면 계정 상태를 정지로 — 좌석이 아직 이 배정에 연결돼 있을 때만(다른 사람에게 넘어간 좌석은 건드리지 않음)
   if (input.type === '정지' && a.account_id) {
-    const { data: acc } = await db().from('accounts').select('status').eq('id', a.account_id).single()
-    if (acc && acc.status !== '정지') {
+    const { data: acc } = await db()
+      .from('accounts')
+      .select('status, current_assignment_id')
+      .eq('id', a.account_id)
+      .single()
+    if (acc && acc.status !== '정지' && acc.current_assignment_id === a.id) {
       await transitionAccount({
         id: a.account_id,
         to: '정지',
@@ -131,6 +141,18 @@ export async function replaceAccount(
     .sort((a, b) => (a.kind === b.kind ? a.id.localeCompare(b.id) : a.kind === '예비' ? -1 : 1))
   if (ordered.length === 0) throw new Error(`대체할 ${service} 가용 계정이 없습니다.`)
 
+  // 원 배정에 「대체됨」 표시를 먼저 찍는다(조건부 — 동시에 두 번 대체하는 것도 여기서 막힌다).
+  // 중복 신청 방지 인덱스(R9)는 replaced_at 이 찍힌 건을 빼고 보므로, 이 뒤에야 같은 사람의 새 건을 만들 수 있다(0005).
+  const { data: marked, error: markErr } = await db()
+    .from('assignments')
+    .update({ replaced_at: new Date().toISOString() })
+    .eq('id', old.id)
+    .in('status', ['사용중', '배정'])
+    .is('replaced_at', null)
+    .select('id')
+  if (markErr) throw new Error(markErr.message)
+  if (!marked || marked.length === 0) throw new Error('원 배정이 이미 대체 중이거나 상태가 바뀌었습니다. 새로고침 후 확인해 주세요.')
+
   // 새 배정을 만든 뒤 좌석을 조건부로 선점한다. 선점에 실패하면(다른 처리가 먼저 가져감) 새 배정을 지우고 다음 후보.
   let newId = ''
   let pick: { id: string } | null = null
@@ -159,6 +181,7 @@ export async function replaceAccount(
     if (insErr) {
       // 좌석 유일 인덱스(0004) 위반 = 이 좌석이 이미 다른 활성 배정에 있음 → 다음 후보
       if (/assignments_active_account_uq/.test(insErr.message)) continue
+      await db().from('assignments').update({ replaced_at: null }).eq('id', old.id) // 표시 되돌림
       throw new Error(insErr.message)
     }
     const claimed = await claimAccount({
@@ -175,7 +198,10 @@ export async function replaceAccount(
     }
     await db().from('assignments').delete().eq('id', id)
   }
-  if (!pick) throw new Error(`대체할 ${service} 가용 계정을 잡지 못했습니다. 잠시 후 다시 시도해 주세요.`)
+  if (!pick) {
+    await db().from('assignments').update({ replaced_at: null }).eq('id', old.id) // 표시 되돌림
+    throw new Error(`대체할 ${service} 가용 계정을 잡지 못했습니다. 잠시 후 다시 시도해 주세요.`)
+  }
 
   // 기존 배정 종료 처리 (새 좌석을 확보한 뒤에 한다 — 실패 시 원 배정이 그대로 남도록)
   if (old.account_id) {

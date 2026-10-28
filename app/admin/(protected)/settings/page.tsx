@@ -1,5 +1,6 @@
 /** 설정 (PRD §7-2) */
 import { db } from '@/lib/db'
+import { toKSTDate } from '@/lib/date'
 import { getSettings } from '@/lib/settings'
 import { Button, Card, Table, Td, inputClass } from '@/components/ui'
 import { L } from '@/lib/labels'
@@ -59,7 +60,7 @@ export default async function SettingsPage() {
             <tr key={a.email}>
               <Td className="text-xs">{a.email}</Td>
               <Td className="text-xs">{a.name ?? '-'}</Td>
-              <Td className="text-xs">{a.created_at?.slice(0, 10)}</Td>
+              <Td className="text-xs">{toKSTDate(a.created_at) ?? '-'}</Td>
               <Td>
                 <form action={adminRemoveAction}>
                   <input type="hidden" name="email" value={a.email} />

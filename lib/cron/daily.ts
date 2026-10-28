@@ -8,11 +8,11 @@ import { todayKST } from '@/lib/date'
 import { DEFAULT_SETTINGS, getSettings } from '@/lib/settings'
 import { markOk, withLock } from '@/lib/lock'
 import { rebuildAlerts, listAlerts } from '@/lib/alerts'
-import { dispatchQueue } from '@/lib/mail/dispatch'
+import { dispatchQueue, type DispatchResult } from '@/lib/mail/dispatch'
 import { queueAdminMail } from '@/lib/mail/queue'
 import { log } from '@/lib/state'
 import { autoAssignAll, endExpiredRentals, type AssignScope } from '@/lib/ops/assignments'
-import { processExpiries, refreshAccountStats } from '@/lib/ops/accounts'
+import { processExpiries, refreshAccountStats, type ExpiryResult } from '@/lib/ops/accounts'
 import { suspensionRate } from '@/lib/ops/incidents'
 
 export interface DailyError {
@@ -25,10 +25,11 @@ export interface DailyResult {
   rent_ended: string[]
   assigned: string[]
   alerts: number
-  mail: { sent: number; failed: number; remaining: number }
+  mail: DispatchResult
   stats_updated: number
   expired_accounts: string[]
   expiring_soon: Array<{ id: string; expires_on: string }>
+  expired_in_use: Array<{ id: string; expires_on: string; status: string }>
   suspension_rate: number
   digest_recipients: number
   /** 실패한 단계. 비어 있지 않으면 cron 응답이 500 이 되고 점검 메일 맨 위에 표시된다 */
@@ -50,10 +51,18 @@ function emptyResult(today: string): DailyResult {
     stats_updated: 0,
     expired_accounts: [],
     expiring_soon: [],
+    expired_in_use: [],
     suspension_rate: 0,
     digest_recipients: 0,
     errors: [],
   }
+}
+
+/** 메일 발송 중단 사유 표시 (순수 함수) */
+export function mailStopNote(stopped: DispatchResult['stopped']): string {
+  if (stopped === 'auth') return ' ⚠ 인증 실패로 발송 중단 — GMAIL_USER·GMAIL_APP_PASSWORD 를 확인하세요'
+  if (stopped === 'limit') return ' ⚠ Gmail 일일 한도로 발송 중단 — 내일 재시도'
+  return ''
 }
 
 /** 점검 메일 맨 위에 붙일 오류 요약 (순수 함수) */
@@ -118,17 +127,17 @@ async function runDailyUnlocked(actor: string, today: string, scope?: AssignScop
   const statsUpdated = await step('계정 통계', () => refreshAccountStats(today), 0)
 
   // 7. 구독 만료 처리 / D-N 임박
-  const { expired, soon } = await step(
+  const { expired, soon, overdueInUse } = await step(
     '구독 만료',
     () => processExpiries(s.account_expiry_alert_days, today),
-    { expired: [] as string[], soon: [] as Array<{ id: string; expires_on: string }> },
+    { expired: [], soon: [], overdueInUse: [] } as ExpiryResult,
   )
 
   // 8. 관리자 일일 점검 메일 — 앞 단계 오류도 함께 알린다
   const rate = await step('정지율', () => suspensionRate(), 0)
   const digest = await step(
     '점검 메일',
-    () => sendDigest({ today, rentEnded, assigned, mail, soon, rate, errors: [...errors] }),
+    () => sendDigest({ today, rentEnded, assigned, mail, soon, overdueInUse, rate, errors: [...errors] }),
     0,
   )
 
@@ -139,6 +148,7 @@ async function runDailyUnlocked(actor: string, today: string, scope?: AssignScop
       mail.sent += extra.sent
       mail.failed += extra.failed
       mail.remaining = extra.remaining
+      if (extra.stopped && extra.stopped !== 'locked') mail.stopped = extra.stopped
     }
   }
 
@@ -151,6 +161,7 @@ async function runDailyUnlocked(actor: string, today: string, scope?: AssignScop
     stats_updated: statsUpdated,
     expired_accounts: expired,
     expiring_soon: soon,
+    expired_in_use: overdueInUse,
     suspension_rate: rate,
     digest_recipients: digest,
     errors,
@@ -165,8 +176,9 @@ async function sendDigest(input: {
   today: string
   rentEnded: string[]
   assigned: string[]
-  mail: { sent: number; failed: number; remaining: number }
+  mail: DispatchResult
   soon: Array<{ id: string; expires_on: string }>
+  overdueInUse: ExpiryResult['overdueInUse']
   rate: number
   errors: DailyError[]
 }): Promise<number> {
@@ -205,8 +217,13 @@ async function sendDigest(input: {
     `· 오늘 대여 종료(회수중 전환): ${input.rentEnded.length}건`,
     `· 장애 미처리: ${openIncidents ?? 0}건`,
     `· 정지율: ${input.rate}%${input.rate > s.suspension_rate_warn ? ' ⚠ 업체 협의 필요' : ''}`,
-    `· 메일 발송: 성공 ${input.mail.sent} / 실패 ${input.mail.failed} / 대기 ${input.mail.remaining}`,
+    `· 메일 발송: 성공 ${input.mail.sent} / 실패 ${input.mail.failed} / 대기 ${input.mail.remaining}${mailStopNote(input.mail.stopped)}`,
   ]
+
+  if (input.overdueInUse.length > 0) {
+    lines.push('', '■ 만료일 경과·사용중 좌석 — 자동 만료하지 않았습니다. 회수를 완료하면 다음 일일 작업에서 만료 처리됩니다')
+    for (const a of input.overdueInUse) lines.push(`  - ${a.id} : 만료일 ${a.expires_on} (현재 ${a.status})`)
+  }
 
   if (input.soon.length > 0) {
     lines.push('', `■ 구독 만료 임박(D-${s.account_expiry_alert_days})`)

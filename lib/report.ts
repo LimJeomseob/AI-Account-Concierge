@@ -84,16 +84,18 @@ export function toCsv(headers: string[], rows: Array<Array<string | number | nul
   return '﻿' + [headers.map(esc).join(','), ...rows.map((r) => r.map(esc).join(','))].join('\n')
 }
 
+// 사용 인원 = 사람 단위(같은 프로그램의 장애 대체는 1명, 관리자 취소 제외) — 0005_report_dedup.sql
+// 인수기한초과·미인수율은 인수 확인 폐지(R18·R19, 2026-10-28)로 항상 0 이라 CSV·화면에서 뺀다(뷰 열은 유지)
 export function programCsv(rows: ProgramReportRow[]): string {
   return toCsv(
     [
       '프로그램ID', '프로그램명', '대상', '신청', '승인', '배정', '사용 인원', '회수완료',
-      'GPT 사용', 'Claude 사용', '인수기한초과', '회수 완료율(%)', '대기 인원',
+      'GPT 사용', 'Claude 사용', '회수 완료율(%)', '대기 인원',
       '승인→배정 평균(일)', '승인→배정 최대(일)',
     ],
     rows.map((r) => [
       r.program_id, r.program_name, r.target, r.applied_cnt, r.approved_cnt, r.assigned_cnt,
-      r.used_cnt, r.returned_cnt, r.used_gpt, r.used_claude, r.ack_overdue_cnt, r.return_rate,
+      r.used_cnt, r.returned_cnt, r.used_gpt, r.used_claude, r.return_rate,
       r.waiting_cnt, r.wait_days_avg, r.wait_days_max,
     ]),
   )
@@ -117,7 +119,6 @@ export function summaryCsv(s: SummaryReport): string {
       ['평균 회전율(회)', s.turnover_avg],
       ['현재 대기 인원', s.waiting_cnt],
       ['평균 대기일수', s.waiting_days_avg],
-      ['미인수율(%)', s.no_ack_rate],
       ['정지율(%)', s.suspension_rate],
       ['계정 가용', s.acc_available],
       ['계정 배정', s.acc_assigned],

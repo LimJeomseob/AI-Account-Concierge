@@ -43,7 +43,6 @@ type Mods = {
   assignments: typeof import('@/lib/ops/assignments')
   accounts: typeof import('@/lib/ops/accounts')
   incidents: typeof import('@/lib/ops/incidents')
-  privacy: typeof import('@/lib/ops/privacy')
   alerts: typeof import('@/lib/alerts')
   daily: typeof import('@/lib/cron/daily')
   monthly: typeof import('@/lib/cron/monthly')
@@ -61,7 +60,6 @@ async function load(): Promise<Mods> {
     assignments: await import('@/lib/ops/assignments'),
     accounts: await import('@/lib/ops/accounts'),
     incidents: await import('@/lib/ops/incidents'),
-    privacy: await import('@/lib/ops/privacy'),
     alerts: await import('@/lib/alerts'),
     daily: await import('@/lib/cron/daily'),
     monthly: await import('@/lib/cron/monthly'),
@@ -386,26 +384,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(second.digest_recipients).toBe(0) // 같은 날 점검 메일 중복 생성 안 함
   }, 120_000)
 
-  it('T10 — 개인정보 파기 후에도 실적 수치는 그대로', async () => {
-    const beforeReport = await M.report.summaryReport()
-
-    const { data: user } = await M.db.db().from('users').select('id').eq('email', mail(1)).single()
-    expect(user?.id).toBeTruthy()
-    const purged = await M.privacy.purgeUsers([user!.id], 'acceptance@test')
-    expect(purged).toBe(1)
-
-    const { data: after } = await M.db.db().from('users').select('name, phone, purged_at').eq('id', user!.id).single()
-    expect(after?.name).toBe('(파기)')
-    expect(after?.phone).toBeNull()
-    expect(after?.purged_at).toBeTruthy()
-
-    const { data: asg } = await M.db.db().from('assignments').select('name').eq('id', ids.a1).single()
-    expect(asg?.name).toBe('(파기)')
-
-    const afterReport = await M.report.summaryReport()
-    expect(afterReport.used_total).toBe(beforeReport.used_total)
-    expect(afterReport.used_student).toBe(beforeReport.used_student)
-  })
+  // T10(개인정보 파기 후 실적 유지)은 파기 기능 제거(2026-10-28, R30 개정)로 삭제 — 파기는 운영매뉴얼의 SQL 절차로 처리
 
   it('T12 — 허용 목록에 없는 계정은 관리자가 아니다', async () => {
     const { data } = await M.db

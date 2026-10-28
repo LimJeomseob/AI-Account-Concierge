@@ -1,10 +1,12 @@
 /** 신청·배정 (PRD §7-2) */
 import Link from 'next/link'
 import { db } from '@/lib/db'
+import { toKSTDate } from '@/lib/date'
 import { Badge, Button, Card, Table, Td } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 import { CHECKLIST_FIELDS, L } from '@/lib/labels'
 import { applicantEmails, exportQuery } from '@/lib/ops/export'
+import { incidentUrl } from '@/lib/token'
 import { approveAction, cancelAction, checklistAction, completeReturnAction, rejectAction } from '@/app/admin/actions'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +33,8 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   const { data: rows } = await query
   const { data: programs } = await db().from('programs').select('id, name').order('id')
 
+  // 안내문의 장애 신고 링크(R26) — 신청자 자동 메일이 없으므로 안내문에 담아 직접 전달한다
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
   // 신청자 메일 발송 명단 — 자동 메일 폐지(R11·R16)로 담당자가 직접 보내므로 화면에서 바로 내려받는다
   const emails = applicantEmails(rows ?? [])
   const exportHref = `/api/admin/assignments/export${exportQuery({ status, program, q })}`
@@ -123,7 +127,7 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
             <p className="text-sm text-slate-600">
               {(r as unknown as { programs: { name: string } | null }).programs?.name} · 계정{' '}
               {r.account_id ?? '-'} ({r.service ?? '-'}) · 대여 {r.rent_start ?? '-'} ~ {r.rent_end ?? '-'} · 사용 개시{' '}
-              {r.acknowledged_at ? r.acknowledged_at.slice(0, 10) : '-'}
+              {toKSTDate(r.acknowledged_at) ?? '-'}
             </p>
             {r.account_id && (
               <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-gnu-sky/60 px-3 py-2 text-sm">
@@ -136,7 +140,8 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
                     value={`[AI융합원] ${r.name}님 AI 유료계정 안내
 계정: ${r.account_id} (${r.service})
 접속 링크: ${links.get(r.account_id)?.access_url}
-대여기간: ${r.rent_start ?? '-'} ~ ${r.rent_end ?? '-'}`}
+대여기간: ${r.rent_start ?? '-'} ~ ${r.rent_end ?? '-'}
+장애 신고(정지·로그인 불가): ${incidentUrl(appUrl, r.id)}`}
                     label="안내문 복사"
                   />
                 )}
