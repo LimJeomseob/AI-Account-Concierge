@@ -5,6 +5,8 @@ import { formatAccountId, formatAssignmentId, formatProgramId, formatUserId } fr
 import { alertText } from '@/lib/alerts'
 import { canTransitionAccount, canTransitionAssignment } from '@/lib/state'
 import { toCsv } from '@/lib/report'
+import { applicantCsv, applicantEmails, exportQuery } from '@/lib/ops/export'
+import { acceptanceEnabled } from './integration-guard'
 import { sign, verify } from '@/lib/token'
 import { normalizeUrl, parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
 
@@ -140,5 +142,53 @@ describe('접속 링크 정규화 (R14-2)', () => {
   it('http(s) 만 허용하고 앞뒤 공백을 지운다', () => {
     expect(normalizeUrl('  https://team.example/seat/1  ')).toBe('https://team.example/seat/1')
     expect(() => normalizeUrl('team.example/seat/1')).toThrow()
+  })
+})
+
+describe('신청자 목록 내려받기 (R7·R30)', () => {
+  const rows = [
+    {
+      id: 'A261028-0001', name: '홍길동', email: 'Hong@Example.com', program_id: 'P26-01', service_wish: 'GPT',
+      account_id: 'GPT-001', service: 'GPT', status: '사용중', applied_at: '2026-10-27T15:30:00Z',
+      rent_start: '2026-10-28', rent_end: '2026-11-26', programs: { name: '특강' }, users: { affiliation: 'AI융합원', type: '교원' },
+    },
+    {
+      id: 'A261028-0002', name: '(파기)', email: 'u-0002@purged.local', program_id: 'P26-01', service_wish: '무관',
+      account_id: null, service: null, status: '회수완료', applied_at: '2026-10-27T10:00:00Z',
+      rent_start: null, rent_end: null, programs: null, users: null,
+    },
+    { id: 'A261028-0003', name: '홍길동', email: 'hong@example.com', program_id: 'P26-02', service_wish: '무관',
+      account_id: null, service: null, status: '신청', applied_at: '2026-10-28T01:00:00Z', rent_start: null, rent_end: null },
+  ]
+
+  it('CSV — BOM·헤더·KST 신청일·프로그램명 대체', () => {
+    const csv = applicantCsv(rows)
+    const lines = csv.split('\n')
+    expect(lines[0].startsWith('﻿접수번호,프로그램,이름,이메일')).toBe(true)
+    expect(lines[1]).toBe('A261028-0001,특강,홍길동,Hong@Example.com,AI융합원,교원,GPT,GPT-001 (GPT),사용중,2026-10-28,2026-11-26,2026-10-28')
+    expect(lines[2]).toContain(',P26-01,(파기),u-0002@purged.local,,,')
+    expect(csv).not.toContain('https://') // 접속 링크는 포함하지 않는다
+  })
+
+  it('이메일 목록 — 소문자·중복 제거·파기 계정 제외', () => {
+    expect(applicantEmails(rows)).toEqual(['hong@example.com'])
+  })
+
+  it('내려받기 쿼리는 빈 필터를 생략한다', () => {
+    expect(exportQuery({})).toBe('')
+    expect(exportQuery({ status: '신청', program: '', q: '홍' })).toBe('?status=%EC%8B%A0%EC%B2%AD&q=%ED%99%8D')
+  })
+})
+
+describe('통합 테스트 실행 가드 (운영 DB 오실행 방지)', () => {
+  const base = { ACCEPTANCE_CONFIRM: 'yes', SUPABASE_URL: 'https://abcd.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k', APP_SECRET: 's' }
+  it('호스트를 명시하고 일치할 때만 켜진다', () => {
+    expect(acceptanceEnabled({ ...base, ACCEPTANCE_DB_HOST: 'abcd.supabase.co' })).toBe(true)
+    expect(acceptanceEnabled({ ...base, ACCEPTANCE_DB_HOST: 'ABCD.supabase.co ' })).toBe(true)
+  })
+  it('호스트 미지정·불일치·확인 누락이면 꺼진다', () => {
+    expect(acceptanceEnabled({ ...base })).toBe(false)
+    expect(acceptanceEnabled({ ...base, ACCEPTANCE_DB_HOST: 'prod.supabase.co' })).toBe(false)
+    expect(acceptanceEnabled({ ...base, ACCEPTANCE_DB_HOST: 'abcd.supabase.co', ACCEPTANCE_CONFIRM: 'no' })).toBe(false)
   })
 })

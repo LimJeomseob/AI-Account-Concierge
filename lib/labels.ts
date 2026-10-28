@@ -30,6 +30,8 @@ export const L = {
     acknowledged_at: '사용개시',
     returned_at: '회수완료',
     note: '비고',
+    export_csv: 'CSV 내려받기',
+    copy_emails: '이메일만 복사',
   },
   checklist: {
     chk_delete_chats: '대화·메모리 삭제',
@@ -95,6 +97,9 @@ export const STATUS_BADGE: Record<string, string> = {
   sent: 'bg-green-100 text-green-700 border-green-200',
   failed: 'bg-red-100 text-red-700 border-red-200',
 }
+
+/** 전체 개인정보 파기(R30) 확인 문구 — 정확히 입력해야 실행된다 */
+export const PURGE_ALL_CONFIRM = '전체파기'
 
 /** 회수 체크리스트 (R24) — ① 대화·메모리 삭제 ② 팀에서 제거 */
 export const CHECKLIST_FIELDS = ['chk_delete_chats', 'chk_team_removed'] as const

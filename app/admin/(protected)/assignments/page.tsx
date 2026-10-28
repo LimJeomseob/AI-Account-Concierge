@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { Badge, Button, Card, Table, Td } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 import { CHECKLIST_FIELDS, L } from '@/lib/labels'
+import { applicantEmails, exportQuery } from '@/lib/ops/export'
 import { approveAction, cancelAction, checklistAction, completeReturnAction, rejectAction } from '@/app/admin/actions'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,10 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
 
   const { data: rows } = await query
   const { data: programs } = await db().from('programs').select('id, name').order('id')
+
+  // 신청자 메일 발송 명단 — 자동 메일 폐지(R11·R16)로 담당자가 직접 보내므로 화면에서 바로 내려받는다
+  const emails = applicantEmails(rows ?? [])
+  const exportHref = `/api/admin/assignments/export${exportQuery({ status, program, q })}`
 
   // 접속 링크는 자동 메일 대신 관리자가 화면에서 보고 직접 전달한다 (2026-10-28, R16 폐지)
   const accountIds = [...new Set((rows ?? []).map((r) => r.account_id).filter((v): v is string => !!v))]
@@ -79,6 +84,16 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
             초기화
           </Link>
         </form>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gnu-line pt-3 text-sm">
+          <span className="text-xs text-slate-600">현재 목록 {rows?.length ?? 0}건 · 이메일 {emails.length}개</span>
+          <a
+            href={exportHref}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[13px] text-slate-700 hover:bg-slate-50"
+          >
+            {L.assignment.export_csv}
+          </a>
+          {emails.length > 0 && <CopyButton value={emails.join(', ')} label={L.assignment.copy_emails} />}
+        </div>
       </Card>
 
       <Card title="일괄 처리">
