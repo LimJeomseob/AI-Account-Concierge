@@ -1,7 +1,7 @@
 /** 대시보드 (PRD §7-2) */
 import Link from 'next/link'
 import { db } from '@/lib/db'
-import { nowKSTText, todayKST } from '@/lib/date'
+import { addDays, nowKSTText, todayKST } from '@/lib/date'
 import { lastOk } from '@/lib/lock'
 import type { DailyError } from '@/lib/cron/daily'
 import { getSettings } from '@/lib/settings'
@@ -47,14 +47,20 @@ export default async function DashboardPage() {
   const alerts = await listAlerts()
   const rate = await suspensionRate()
 
-  const limit = new Date(`${today}T00:00:00Z`)
-  limit.setUTCDate(limit.getUTCDate() + s.account_expiry_alert_days)
   const { data: expiring } = await db()
     .from('accounts')
     .select('id, service, expires_on, status')
     .not('expires_on', 'is', null)
     .gte('expires_on', today)
-    .lte('expires_on', limit.toISOString().slice(0, 10))
+    .lte('expires_on', addDays(today, s.account_expiry_alert_days))
+    .order('expires_on')
+
+  // 만료일이 지났는데 사용중·회수중인 좌석 — 일일 작업이 자동 만료하지 않으므로 여기서 경고
+  const { data: expiredInUse } = await db()
+    .from('accounts')
+    .select('id, service, expires_on, status')
+    .lt('expires_on', today)
+    .in('status', ['배정', '회수중'])
     .order('expires_on')
 
   // 일일 작업 상태 (R32) — 마지막 실행 결과의 오류, 마지막 성공 시각
@@ -67,6 +73,14 @@ export default async function DashboardPage() {
     .maybeSingle()
   const lastRunErrors = ((lastRun?.detail as { errors?: DailyError[] } | null)?.errors ?? []) as DailyError[]
   const lastOkAt = await lastOk('cron.daily')
+  const { data: lastMail } = await db()
+    .from('logs')
+    .select('at, detail')
+    .eq('action', 'mail.dispatch')
+    .order('at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const mailStopped = (lastMail?.detail as { stopped?: string } | null)?.stopped
   const cronStale = lastOkAt !== null && Date.now() - lastOkAt > 26 * 60 * 60 * 1000
 
   return (
@@ -89,6 +103,14 @@ export default async function DashboardPage() {
           </form>
         </div>
       </header>
+
+      {(mailStopped === 'auth' || mailStopped === 'limit') && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {mailStopped === 'auth'
+            ? '⚠ 마지막 메일 발송이 Gmail 인증 실패로 중단됐습니다. GMAIL_USER·GMAIL_APP_PASSWORD 환경변수를 확인해 주세요(설정 화면 「발신 테스트」).'
+            : '⚠ 마지막 메일 발송이 Gmail 일일 한도로 중단됐습니다. 남은 메일은 다음 일일 작업에서 보냅니다.'}
+        </div>
+      )}
 
       {(lastRunErrors.length > 0 || cronStale) && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -157,6 +179,26 @@ export default async function DashboardPage() {
           </Table>
         )}
       </Card>
+
+      {(expiredInUse ?? []).length > 0 && (
+        <Card title={`만료일 경과·사용중 (${expiredInUse!.length})`}>
+          <p className="mb-2 text-xs text-red-700">
+            구독 만료일이 지났지만 사용중·회수중이라 자동 만료하지 않은 좌석입니다. 회수를 완료하면 다음 일일 작업에서 만료 처리됩니다.
+          </p>
+          <Table head={['계정ID', '서비스', '만료일', '상태']}>
+            {expiredInUse!.map((a) => (
+              <tr key={a.id}>
+                <Td>{a.id}</Td>
+                <Td>{a.service}</Td>
+                <Td>{a.expires_on}</Td>
+                <Td>
+                  <Badge value={a.status} />
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      )}
 
       <Card title={`구독 만료 임박 (D-${s.account_expiry_alert_days})`}>
         {(expiring ?? []).length === 0 ? (

@@ -1,9 +1,13 @@
-/** 사용자·개인정보 (PRD §7-2, R30) */
+/**
+ * 사용자 (PRD §7-2) — 조회 전용.
+ * 개인정보 파기(R30)는 시스템 기능으로 제공하지 않는다(2026-10-28). 보유기간 만료 시 운영자가
+ * docs/운영매뉴얼.md 의 SQL 절차로 DB 에서 직접 처리한다.
+ */
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
-import { Button, Card } from '@/components/ui'
+import { toKSTDate } from '@/lib/date'
+import { Button, Card, Table, Td } from '@/components/ui'
 import { L } from '@/lib/labels'
-import PurgeTable, { type UserRow } from './PurgeTable'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +38,23 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
       </Card>
 
       <Card title={`참여자 (${users?.length ?? 0})`}>
-        <PurgeTable users={(users ?? []) as UserRow[]} privacyPeriod={s.privacy_period} />
+        <p className="mb-3 text-xs text-slate-500">
+          보유기간: {s.privacy_period} · 보유기간이 지나면 운영매뉴얼의 「개인정보 파기 SQL」 절차로 처리합니다(화면 기능 없음).
+        </p>
+        <Table head={['사용자ID', '이름', '구분', '소속', '이메일', '연락처', '동의일', '최초신청']}>
+          {(users ?? []).map((u) => (
+            <tr key={u.id}>
+              <Td className="text-xs">{u.id}</Td>
+              <Td>{u.name}</Td>
+              <Td className="text-xs">{u.type}</Td>
+              <Td className="text-xs">{u.affiliation ?? '-'}</Td>
+              <Td className="text-xs">{u.email}</Td>
+              <Td className="text-xs">{u.phone ?? '-'}</Td>
+              <Td className="text-xs">{toKSTDate(u.privacy_consented_at) ?? '-'}</Td>
+              <Td className="text-xs">{toKSTDate(u.first_applied_at) ?? '-'}</Td>
+            </tr>
+          ))}
+        </Table>
       </Card>
     </>
   )

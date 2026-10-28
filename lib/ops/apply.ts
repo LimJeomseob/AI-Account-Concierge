@@ -121,7 +121,8 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     return { ok: false, msg: '접수 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.' }
   }
 
-  await log('public', 'assignment.apply', id, { program_id: program.id, email })
+  // §13: 로그에는 ID 수준만 — 이메일 등 개인정보는 남기지 않는다
+  await log('public', 'assignment.apply', id, { program_id: program.id })
 
   return { ok: true, id, period: avail.period }
 }

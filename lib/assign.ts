@@ -2,7 +2,7 @@
  * 자동 배정 알고리즘 — 순수 함수 (PRD R5·R12·R14·R15)
  * DB 접근은 lib/actions/assign-db.ts 가 담당하고, 판단 로직은 모두 여기에 둔다.
  */
-import { addDays, todayKST } from '@/lib/date'
+import { addDays, toKSTDate, todayKST } from '@/lib/date'
 import type { Period, Program, Service, ServiceWish } from '@/lib/types'
 
 /** 배정 가능한 계정(풀 원소) */
@@ -204,7 +204,8 @@ export function assignedDaysOf(
     if (r.status === '취소' || r.status === '반려') continue
     const start = r.rent_start ?? r.assigned_on
     if (!start) continue
-    let end = r.returned_at?.slice(0, 10) ?? r.rent_end ?? today
+    // returned_at 은 timestamptz — UTC 문자열을 자르면 KST 00~09시 회수가 하루 앞당겨진다(R33)
+    let end = toKSTDate(r.returned_at) ?? r.rent_end ?? today
     if (end > today) end = today
     if (end < start) continue
     const days =

@@ -39,11 +39,11 @@ export async function runMonthly(actor = 'system', month: string = monthKST()): 
     `AI 유료계정 관리시스템 월간 실적 스냅샷 (${month})`,
     `생성 시각: ${nowKSTText()}`,
     '',
-    `· 누계 사용 인원: ${summary.used_total}명 / 목표 ${summary.target_headcount}명 (달성률 ${summary.achievement_rate}%)`,
+    `· 누계 사용 인원(사람 단위, 관리자 취소 제외): ${summary.used_total}명 / 목표 ${summary.target_headcount}명 (달성률 ${summary.achievement_rate}%)`,
     `· 대상별: 교원 ${summary.used_faculty} · 직원 ${summary.used_staff} · 학생 ${summary.used_student} · 지역민 ${summary.used_local}`,
     `· 서비스별: GPT ${summary.used_gpt} · Claude ${summary.used_claude}`,
     `· 계정·월 환산: ${summary.account_months} / 평균 유휴율 ${summary.idle_rate ?? '-'}% / 평균 회전율 ${summary.turnover_avg}회`,
-    `· 대기 인원 ${summary.waiting_cnt}명 (평균 ${summary.waiting_days_avg ?? '-'}일) / 미인수율 ${summary.no_ack_rate ?? '-'}%`,
+    `· 대기 인원 ${summary.waiting_cnt}명 (평균 ${summary.waiting_days_avg ?? '-'}일)`,
     `· 정지율 ${summary.suspension_rate}% / 계정 가용 ${summary.acc_available} · 배정 ${summary.acc_assigned} · 회수중 ${summary.acc_returning} · 정지 ${summary.acc_suspended} · 만료 ${summary.acc_expired}`,
     '',
     '■ 프로그램별 사용 인원',
@@ -55,12 +55,21 @@ export async function runMonthly(actor = 'system', month: string = monthKST()): 
     `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin/reports`,
   ].join('\n')
 
-  const recipients = await queueAdminMail({
-    subject: `[AI융합원] 월간 실적 스냅샷 (${month})`,
-    text,
-    kind: 'snapshot',
-    refId: month,
-  })
+  // 멱등(R32): 같은 달 스냅샷 메일을 이미 넣었으면 다시 넣지 않는다(스냅샷 수치는 위에서 갱신됨)
+  const { count: already } = await db()
+    .from('mail_queue')
+    .select('id', { count: 'exact', head: true })
+    .eq('kind', 'snapshot')
+    .eq('ref_id', month)
+  const recipients =
+    (already ?? 0) > 0
+      ? 0
+      : await queueAdminMail({
+          subject: `[AI융합원] 월간 실적 스냅샷 (${month})`,
+          text,
+          kind: 'snapshot',
+          refId: month,
+        })
   if (recipients > 0) await dispatchQueue(recipients + 10)
 
   await log(actor, 'cron.monthly', month, { used_total: summary.used_total })

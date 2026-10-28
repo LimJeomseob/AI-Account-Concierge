@@ -214,31 +214,31 @@ export async function rejectAssignments(ids: string[], actor: string, reason: st
   return n
 }
 
-/** R17: 취소 (계정이 연결돼 있으면 회수중으로) */
+/**
+ * R17: 취소. 좌석을 쥐고 있던 건은 「회수중」(회수 체크리스트 R24 를 거쳐야 좌석이 풀림), 아니면 「취소」.
+ * 배정 전이를 먼저 하고(조건부), 좌석은 이 건에 연결돼 있을 때만 회수중으로 옮긴다.
+ * cancelled_at 을 남겨 실적(R29)에서 제외한다(0005).
+ */
 export async function cancelAssignment(id: string, actor: string, reason = ''): Promise<void> {
   const { data: a } = await db().from('assignments').select('status, account_id').eq('id', id).single()
   if (!a) throw new Error(`배정 ${id} 없음`)
+  if (['회수완료', '반려', '취소'].includes(a.status)) throw new Error(`「${a.status}」 상태인 건은 취소할 수 없습니다.`)
 
-  if (a.account_id) {
-    await moveAccountToReturning(a.account_id, id, actor)
-    await transitionAssignment({
-      id,
-      to: '회수중',
-      actor,
-      action: 'assignment.cancel',
-      patch: { note: reason || '관리자 취소' },
-      detail: { reason: reason || '관리자 취소', account_id: a.account_id },
-    })
-    return
-  }
-  await transitionAssignment({
+  const note = reason || '관리자 취소'
+  const patch = { note, cancelled_at: new Date().toISOString() }
+  const holdsSeat = !!a.account_id && !['신청', '승인'].includes(a.status)
+
+  const ok = await transitionAssignment({
     id,
-    to: '취소',
+    to: holdsSeat ? '회수중' : '취소',
     actor,
     action: 'assignment.cancel',
-    patch: { note: reason || '관리자 취소' },
-    detail: { reason },
+    expect: holdsSeat ? ['배정', '사용중', '회수중', '인수기한초과'] : ['신청', '승인'],
+    patch,
+    detail: { reason: note, ...(holdsSeat ? { account_id: a.account_id } : {}) },
   })
+  if (!ok) throw new Error('신청 건 상태가 바뀌었습니다. 새로고침 후 다시 시도해 주세요.')
+  if (holdsSeat) await moveAccountToReturning(a.account_id!, id, actor)
 }
 
 /**
@@ -250,8 +250,19 @@ export async function moveAccountToReturning(
   assignmentId: string,
   actor: string,
 ): Promise<void> {
-  const { data: acc } = await db().from('accounts').select('status').eq('id', accountId).single()
+  const { data: acc } = await db()
+    .from('accounts')
+    .select('status, current_assignment_id')
+    .eq('id', accountId)
+    .single()
   if (!acc) return
+  // 이 배정이 쥔 좌석이거나, 연결이 풀린 정지 좌석일 때만 옮긴다 — 다른 사람에게 이미 넘어간 좌석을 빼앗지 않는다
+  const mine = acc.current_assignment_id === assignmentId
+  const orphanSuspended = acc.status === '정지' && acc.current_assignment_id === null
+  if (!mine && !orphanSuspended) {
+    await log(actor, 'account.returning.skip', accountId, { assignment_id: assignmentId, current: acc.current_assignment_id })
+    return
+  }
   if (acc.status !== '회수중') {
     await transitionAccount({
       id: accountId,
@@ -275,7 +286,7 @@ export async function endExpiredRentals(today: string = todayKST()): Promise<str
 
   const out: string[] = []
   for (const r of rows ?? []) {
-    await transitionAssignment({
+    const ok = await transitionAssignment({
       id: r.id,
       to: '회수중',
       actor: 'system',
@@ -283,6 +294,7 @@ export async function endExpiredRentals(today: string = todayKST()): Promise<str
       expect: ['사용중'],
       detail: { rent_end: r.rent_end },
     })
+    if (!ok) continue // 그사이 다른 처리(취소·장애 대체)가 상태를 바꿈
     if (r.account_id) await moveAccountToReturning(r.account_id, r.id, 'system')
     out.push(r.id)
   }
@@ -297,11 +309,14 @@ export async function setChecklist(
   actor: string,
 ): Promise<void> {
   if (!CHECKLIST_FIELDS.includes(field)) throw new Error('알 수 없는 체크 항목')
-  const { error } = await db()
+  const { data, error } = await db()
     .from('assignments')
     .update({ [field]: value, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .in('status', ['회수중', '인수기한초과'])
+    .select('id')
   if (error) throw new Error(error.message)
+  if (!data || data.length === 0) throw new Error('회수중 상태인 건만 회수 체크리스트를 바꿀 수 있습니다.')
   await log(actor, 'assignment.checklist', id, { field, value })
 }
 
@@ -323,7 +338,7 @@ export async function completeReturn(
     throw new Error('회수 체크리스트 2개 항목(대화·메모리 삭제, 팀에서 제거)을 모두 완료해야 합니다.')
   }
 
-  await transitionAssignment({
+  const ok = await transitionAssignment({
     id,
     to: '회수완료',
     actor,
@@ -331,16 +346,32 @@ export async function completeReturn(
     expect: ['회수중', '인수기한초과'],
     patch: { returned_at: new Date().toISOString() },
   })
+  if (!ok) throw new Error('이미 회수 완료됐거나 상태가 바뀌었습니다. 새로고침 후 확인해 주세요.')
 
   if (a.account_id) {
-    await transitionAccount({
-      id: a.account_id,
-      to: '가용',
-      actor,
-      action: 'account.release',
-      patch: { current_assignment_id: null },
-      detail: { assignment_id: id },
-    })
+    // 이 건이 쥔 좌석만 가용으로 푼다. 정지 좌석은 정지 유지(장애 처리), 다른 건에 연결된 좌석은 건드리지 않음
+    const { data: acc } = await db()
+      .from('accounts')
+      .select('status, current_assignment_id')
+      .eq('id', a.account_id)
+      .single()
+    if (acc && acc.current_assignment_id === id && ['회수중', '배정'].includes(acc.status)) {
+      await transitionAccount({
+        id: a.account_id,
+        to: '가용',
+        actor,
+        action: 'account.release',
+        expect: ['회수중', '배정'],
+        patch: { current_assignment_id: null },
+        detail: { assignment_id: id },
+      })
+    } else {
+      await log(actor, 'account.release.skip', a.account_id, {
+        assignment_id: id,
+        status: acc?.status ?? null,
+        current: acc?.current_assignment_id ?? null,
+      })
+    }
   }
 
   // 회수 즉시 재배정 (해당 프로그램 우선 → 나머지 진행 프로그램)

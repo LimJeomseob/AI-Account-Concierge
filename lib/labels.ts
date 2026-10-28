@@ -98,9 +98,6 @@ export const STATUS_BADGE: Record<string, string> = {
   failed: 'bg-red-100 text-red-700 border-red-200',
 }
 
-/** 전체 개인정보 파기(R30) 확인 문구 — 정확히 입력해야 실행된다 */
-export const PURGE_ALL_CONFIRM = '전체파기'
-
 /** 회수 체크리스트 (R24) — ① 대화·메모리 삭제 ② 팀에서 제거 */
 export const CHECKLIST_FIELDS = ['chk_delete_chats', 'chk_team_removed'] as const
 

@@ -1,13 +1,17 @@
 /** 장애 신고 페이지 (PRD R26, §7-1) */
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
-import { reportIncident } from '@/lib/ops/incidents'
+import { INCIDENT_REPORTABLE, INCIDENT_TYPES, reportIncident } from '@/lib/ops/incidents'
+import { rateLimit } from '@/lib/rate-limit'
 import { verifyIncidentToken } from '@/lib/token'
 import type { IncidentType } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-type Search = Promise<{ id?: string; t?: string; done?: string }>
+type Search = Promise<{ id?: string; t?: string; done?: string; err?: string }>
+
+/** 배정당 하루 신고 횟수 상한 (R26 남용 방지) */
+const REPORTS_PER_DAY = 5
 
 async function submit(formData: FormData) {
   'use server'
@@ -15,14 +19,25 @@ async function submit(formData: FormData) {
   const t = String(formData.get('t') ?? '')
   if (!id || !verifyIncidentToken(id, t)) throw new Error('링크가 올바르지 않습니다.')
 
-  const type = String(formData.get('type') ?? '기타') as IncidentType
-  const symptom = String(formData.get('symptom') ?? '').slice(0, 1000)
-  await reportIncident({ assignmentId: id, type, symptom })
-  redirect(`/incident?id=${encodeURIComponent(id)}&t=${t}&done=1`)
+  const back = (q: string) => redirect(`/incident?id=${encodeURIComponent(id)}&t=${encodeURIComponent(t)}&${q}`)
+
+  const rawType = String(formData.get('type') ?? '기타')
+  const type: IncidentType = (INCIDENT_TYPES as string[]).includes(rawType) ? (rawType as IncidentType) : '기타'
+  const symptom = String(formData.get('symptom') ?? '').trim().slice(0, 1000)
+  if (!symptom) back('err=empty')
+
+  if (!(await rateLimit(`incident:${id}`, REPORTS_PER_DAY, 86_400))) back('err=limit')
+
+  try {
+    await reportIncident({ assignmentId: id, type, symptom })
+  } catch {
+    back('err=closed')
+  }
+  back('done=1')
 }
 
 export default async function IncidentPage({ searchParams }: { searchParams: Search }) {
-  const { id, t, done } = await searchParams
+  const { id, t, done, err } = await searchParams
 
   if (!id || !verifyIncidentToken(id, t)) {
     return (
@@ -44,9 +59,20 @@ export default async function IncidentPage({ searchParams }: { searchParams: Sea
 
   const { data: a } = await db()
     .from('assignments')
-    .select('id, name, account_id, service')
+    .select('id, status, name, account_id, service')
     .eq('id', id)
     .maybeSingle()
+
+  // 회수가 끝났거나 취소된 배정은 신고를 받지 않는다(옛 링크로 지금 다른 사람이 쓰는 좌석을 정지시키지 못하게)
+  if (!a || !INCIDENT_REPORTABLE.includes(a.status) || err === 'closed') {
+    return (
+      <Shell title="이미 종료된 배정입니다.">
+        <p className="text-sm text-slate-600">
+          접수번호 {id} 는 사용 기간이 끝났거나 회수·취소된 건이라 장애 신고를 받을 수 없습니다. 문의 055-772-4857
+        </p>
+      </Shell>
+    )
+  }
 
   return (
     <Shell title="AI 유료계정 장애 신고">
@@ -54,6 +80,10 @@ export default async function IncidentPage({ searchParams }: { searchParams: Sea
         접수번호 {id}
         {a?.account_id ? ` · 계정 ${a.account_id} (${a.service ?? ''})` : ''}
       </p>
+      {err === 'limit' && (
+        <p className="mt-3 text-sm text-red-700">오늘 신고 가능 횟수({REPORTS_PER_DAY}회)를 넘었습니다. 담당자에게 직접 문의해 주세요.</p>
+      )}
+      {err === 'empty' && <p className="mt-3 text-sm text-red-700">증상을 적어 주세요.</p>}
       <form action={submit} className="mt-4 space-y-4">
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="t" value={t} />
