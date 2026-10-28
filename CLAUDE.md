@@ -3,11 +3,11 @@
 - 사양: `docs/PRD.md` 가 단일 진실. 규칙 번호(R1~R33)를 커밋 메시지·주석에 인용.
 - 스택: Next.js App Router + TS + Tailwind, Supabase(service role, 서버 전용), Gmail SMTP(nodemailer), Vercel Cron.
 - 시간대: 모든 날짜 계산은 Asia/Seoul. 유틸 `lib/date.ts` 의 `todayKST()` 만 사용.
-- DB 접근: `lib/db.ts` 의 서버 클라이언트만. 브라우저 번들에 Supabase service role 키 절대 포함 금지. 좌석 접속 링크(`account_secrets.access_url`)는 서버 전용이며 로그에 남기지 않는다.
-- 상태 전이: `lib/state.ts` 의 `transitionAssignment()` / `transitionAccount()` 를 통해서만 변경, 항상 `logs` 기록. 둘 다 조건부 갱신(읽은 상태일 때만)이며 경합 시 `false`. 좌석 선점·해제는 `claimAccount()` / `releaseClaim()` 만 쓴다(DB 유일 인덱스 `assignments_active_account_uq` 가 최종 방어).
+- DB 접근: `lib/db.ts` 의 서버 클라이언트만. 브라우저 번들에 Supabase service role 키 절대 포함 금지. 로그인 이메일(`account_secrets.login_email`)·신청자 이메일은 로그에 남기지 않는다. 접속 링크 기능은 2026-10-29 폐지(`access_url` 열만 남음).
+- 상태 전이: `lib/state.ts` 의 `transitionAssignment()` / `transitionAccount()` 를 통해서만 변경, 항상 `logs` 기록. 둘 다 조건부 갱신(읽은 상태일 때만)이며 경합 시 `false`. 계정 선점·해제는 `claimAccount()` / `releaseClaim()` 만 쓴다(DB 유일 인덱스 `assignments_active_account_uq` 가 최종 방어).
 - 메일: 직접 발송 금지. `lib/mail/queue.ts` 로 대기열에 넣고 `lib/mail/dispatch.ts` 가 Gmail SMTP(`GMAIL_USER` + `GMAIL_APP_PASSWORD`)로 발송. 둘 중 하나라도 비면 대기열에만 쌓인다.
 - 테스트: 도메인 로직(배정·만료·알림·지표)은 순수 함수로 분리하고 Vitest 단위 테스트.
-- 한글 UI, 라벨은 `lib/labels.ts` 에서 관리.
+- 한글 UI, 라벨은 `lib/labels.ts` 에서 관리. 용어는 「좌석」이 아니라 「계정」, 「좌석번호」가 아니라 「계정번호」(2026-10-29).
 - 비밀 값은 `.env.local`, 예시는 `.env.example` 에 유지.
 
 ## 디렉터리
@@ -25,7 +25,7 @@ lib/
   mail/(templates.ts render.ts queue.ts dispatch.ts)
   ops/(apply.ts assignments.ts accounts.ts incidents.ts export.ts)
   cron/(daily.ts monthly.ts)
-supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql 0004_seat_uniqueness.sql 0005_report_dedup.sql)
+supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql 0004_seat_uniqueness.sql 0005_report_dedup.sql 0006_drop_access_link_rule.sql)
 scripts/seed.ts, scripts/import-accounts.ts
 public/signup-snippet.html                        ← GitHub Pages 삽입용
 docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
@@ -44,10 +44,10 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | R4 프로그램 자동 종료 | 폐지 — 상태(시작전·진행중·완료) 전환은 관리자 드롭다운 수동 `app/admin/actions.ts:programStatusAction` |
 | R5 배정상한 | `lib/assign.ts:capRemaining` |
 | R7~R11 신청 접수 | `lib/ops/apply.ts`, `app/api/public/apply` |
-| R12·R14 자동 배정 | `lib/assign.ts:planAllocations`, `lib/ops/assignments.ts:autoAssignProgram` |
-| R14-2 배정 풀(접속 링크 등록) | `lib/ops/assignments.ts:availablePool`, `program_availability` 뷰 |
+| R12·R14 배정 = 「승인 건 배정 + 메일 내려받기」만 (자동 배정 폐지 2026-10-29) | `lib/ops/assignments.ts:assignApprovedForExport` → `autoAssignProgram`, `lib/assign.ts:planAllocations`, `app/admin/actions.ts:assignExportAction`, `lib/ops/export.ts:assignedCsv` |
+| R14-2 접속 링크 | 폐지(2026-10-29) — 배정 풀은 가용 ∧ 운영 (`availablePool`, `program_availability` 뷰 0006) |
 | R13·R17 승인·취소 (반려 폐지 2026-10-29) | `lib/ops/assignments.ts` |
-| R16 배정안내 메일(계정명·접속 링크) | 폐지(2026-10-28) — 신청자 자동 메일 없음 |
+| R16 배정안내 메일 | 폐지(2026-10-28) — 내려받은 이메일로 워크스페이스 초대 |
 | R18 인수 확인 | 폐지(2026-10-28) — 배정 즉시 「사용중」, `acknowledged_at` = 사용개시 |
 | R19 미인수 자동 취소 | 폐지(2026-10-28) |
 | R20 대여 종료 | `lib/ops/assignments.ts:endExpiredRentals` |
@@ -62,3 +62,4 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | R31 로그 | `lib/state.ts:log` |
 | R32 멱등 일일 작업 | `lib/cron/daily.ts`(단계별 오류 수집·점검 메일 보고), `lib/lock.ts`(실행 잠금·마지막 성공 시각), `app/api/health`(`?strict=1` 외부 감시) |
 | R33 Asia/Seoul | `lib/date.ts` |
+| 유료계정 지원현황(계약 ChatGPT 45 · Claude 71) | 설정 `contract_gpt`·`contract_claude`, `lib/report.ts:supportStatus`, 대시보드 카드 |

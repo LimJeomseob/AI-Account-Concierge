@@ -63,7 +63,7 @@ export default async function IncidentPage({ searchParams }: { searchParams: Sea
     .eq('id', id)
     .maybeSingle()
 
-  // 회수가 끝났거나 취소된 배정은 신고를 받지 않는다(옛 링크로 지금 다른 사람이 쓰는 좌석을 정지시키지 못하게)
+  // 회수가 끝났거나 취소된 배정은 신고를 받지 않는다(옛 링크로 지금 다른 사람이 쓰는 계정을 정지시키지 못하게)
   if (!a || !INCIDENT_REPORTABLE.includes(a.status) || err === 'closed') {
     return (
       <Shell title="이미 종료된 배정입니다.">

@@ -15,13 +15,14 @@ import { CHECKLIST_FIELDS, PROGRAM_STATUSES } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
 import {
   approveAssignments,
-  autoAssignAll,
+  assignApprovedForExport,
   cancelAssignment,
   completeReturn,
   manualAssign,
   setChecklist,
 } from '@/lib/ops/assignments'
-import { importAccounts, parseAccountCsv, setAccessUrl } from '@/lib/ops/accounts'
+import { importAccounts, parseAccountCsv } from '@/lib/ops/accounts'
+import { assignExportMessage, assignedCsv } from '@/lib/ops/export'
 import { replaceAccount } from '@/lib/ops/incidents'
 import { runDaily } from '@/lib/cron/daily'
 import { runMonthly } from '@/lib/cron/monthly'
@@ -72,11 +73,26 @@ export async function manualAssignAction(fd: FormData) {
   revalidatePath('/admin/assignments')
 }
 
-export async function autoAssignAction() {
+/**
+ * R14: 「승인 건 배정 + 메일 내려받기」 — 화면 필터에 걸린 「승인」 건에 계정을 배정하고,
+ * 방금 배정된 사람의 이름·이메일·계정번호 CSV 를 돌려준다(브라우저가 파일로 저장).
+ * 관리자는 받은 이메일을 팀 워크스페이스(ChatGPT·Claude)에 초대한다.
+ */
+export async function assignExportAction(
+  fd: FormData,
+): Promise<{ ok: boolean; msg: string; csv?: string; filename?: string }> {
   const actor = await requireAdminAction()
-  await autoAssignAll(actor)
-  revalidatePath('/admin/assignments')
-  revalidatePath('/admin/dashboard')
+  try {
+    const r = await assignApprovedForExport({ program: str(fd, 'program') || undefined, q: str(fd, 'q') || undefined }, actor)
+    revalidatePath('/admin/assignments')
+    revalidatePath('/admin/dashboard')
+    revalidatePath('/admin/accounts')
+    const msg = assignExportMessage(r.assigned.length, r.noPeriod, r.shortage)
+    if (r.assigned.length === 0) return { ok: false, msg }
+    return { ok: true, msg, csv: assignedCsv(r.assigned), filename: `assigned-${todayKST().replace(/-/g, '')}.csv` }
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message }
+  }
 }
 
 // --- 프로그램 ---------------------------------------------------------------
@@ -172,13 +188,12 @@ export async function accountSaveAction(fd: FormData) {
   const actor = await requireAdminAction()
   const rows = parseAccountCsv(
     [
-      '계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일',
+      '계정번호,서비스,구분,로그인이메일,활성화일,만료일',
       [
         str(fd, 'id'),
         str(fd, 'service'),
         str(fd, 'kind'),
         str(fd, 'login_email'),
-        str(fd, 'access_url'),
         str(fd, 'activated_on'),
         str(fd, 'expires_on'),
       ]
@@ -196,21 +211,6 @@ export async function accountImportAction(fd: FormData) {
   if (!csv) throw new Error('CSV 내용이 비어 있습니다.')
   await importAccounts(parseAccountCsv(csv), actor)
   revalidatePath('/admin/accounts')
-}
-
-/** 좌석 접속 링크 등록·수정 (R14-2) — 잘못된 형식은 예외 대신 메시지로 돌려준다 */
-export async function accountAccessUrlAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
-  const actor = await requireAdminAction()
-  const id = str(fd, 'id')
-  if (!id) return { ok: false, msg: '계정을 선택해 주세요.' }
-  try {
-    await setAccessUrl(id, str(fd, 'access_url'), actor)
-  } catch (e) {
-    return { ok: false, msg: (e as Error).message }
-  }
-  revalidatePath('/admin/accounts')
-  revalidatePath('/admin/dashboard')
-  return { ok: true, msg: str(fd, 'access_url').trim() ? `${id}: 접속 링크를 저장했습니다.` : `${id}: 접속 링크를 비웠습니다.` }
 }
 
 /**
@@ -239,7 +239,7 @@ export async function accountStatusAction(
     }
   }
 
-  // 정지 → 가용: 이 좌석을 아직 쥐고 있는 활성 배정(회수 미완료)이 있으면 먼저 회수를 끝내야 한다 (R24)
+  // 정지 → 가용: 이 계정을 아직 쥐고 있는 활성 배정(회수 미완료)이 있으면 먼저 회수를 끝내야 한다 (R24)
   if (to === '가용') {
     const { data: holders } = await db()
       .from('assignments')
@@ -304,6 +304,8 @@ export async function settingsSaveAction(fd: FormData) {
   const actor = await requireAdminAction()
   const numeric: Array<keyof Settings> = [
     'target_headcount',
+    'contract_gpt',
+    'contract_claude',
   ]
   const text: Array<keyof Settings> = [
     'reply_to',
@@ -319,7 +321,6 @@ export async function settingsSaveAction(fd: FormData) {
   ]
   for (const k of numeric) await setSetting(k, num(fd, k))
   for (const k of text) await setSetting(k, str(fd, k))
-  await setSetting('auto_assign_on_approve', bool(fd, 'auto_assign_on_approve'))
   await setSetting(
     'admin_emails',
     str(fd, 'admin_emails')

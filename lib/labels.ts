@@ -38,7 +38,7 @@ export const L = {
     chk_team_removed: '팀에서 제거(접속 차단)',
   },
   account: {
-    id: '계정ID',
+    id: '계정번호',
     service: '서비스',
     kind: '구분',
     activated_on: '활성화일',
@@ -49,7 +49,6 @@ export const L = {
     assigned_count: '배정횟수',
     alert: '알림',
     login_email: '로그인 이메일',
-    access_url: '접속 링크',
   },
   program: {
     id: '프로그램ID',
@@ -86,9 +85,6 @@ export const STATUS_BADGE: Record<string, string> = {
   // 프로그램 (시작전 → 진행중 → 완료)
   시작전: 'bg-amber-100 text-amber-800 border-amber-200',
   진행중: 'bg-green-100 text-green-700 border-green-200',
-  // 좌석 접속 링크
-  등록: 'bg-green-100 text-green-700 border-green-200',
-  미등록: 'bg-red-100 text-red-700 border-red-200',
   // 기타
   접수: 'bg-blue-100 text-blue-700 border-blue-200',
   처리중: 'bg-amber-100 text-amber-800 border-amber-200',

@@ -5,7 +5,7 @@
  * - Gmail 일일 한도·인증 오류는 그 자리에서 중단해 나머지 행의 재시도 횟수를 소모하지 않는다
  *   (앱 비밀번호가 틀리면 모든 행이 5일 만에 failed 가 되던 문제)
  * - 실행 잠금(lib/lock.ts) — 일일 작업·월간 스냅샷이 동시에 발송해 같은 행을 두 번 보내지 않게
- * - 발송 완료 시 본문 삭제(§13: 접속 링크 잔존 방지)
+ * - 발송 완료 시 본문 삭제(§13: 개인정보 잔존 방지)
  * - From 은 Gmail 이 인증 계정(GMAIL_USER)으로 강제하므로 settings.from_email 은 쓰지 않는다
  */
 import 'server-only'
@@ -122,7 +122,7 @@ async function dispatchUnlocked(limit: number): Promise<DispatchResult> {
               .update({
                 status: 'sent',
                 sent_at: new Date().toISOString(),
-                // 본문(접속 링크 포함 가능)은 발송 후 삭제
+                // 본문(신고자 이름 등 포함 가능)은 발송 후 삭제
                 body_text: null,
                 body_html: null,
                 last_error: null,

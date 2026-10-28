@@ -79,14 +79,14 @@ export default function ApplyForm({
       <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-bold text-[var(--gnu-navy)]">신청이 접수되었습니다.</h2>
         <p className="mt-3 text-sm leading-7 text-slate-700">
-          입력하신 이메일 <strong>{done.email}</strong> 로 계정과 접속 링크를 보내드릴 예정입니다.
+          연락 이메일: <strong>{done.email}</strong>
           <br />
           접수번호: <strong>{done.id}</strong>
           <br />
           대여기간: {done.period}
         </p>
         <p className="mt-3 text-sm text-slate-600">
-          관리자 승인·배정이 끝나면 담당자가 접속 링크를 직접 안내해 드립니다. 자동 안내 메일은 발송되지 않으니 접수번호를 꼭 보관해 주세요.
+          관리자 승인·배정이 끝나면 입력하신 이메일로 팀 워크스페이스 초대 메일이 갑니다. 접수번호를 꼭 보관해 주세요.
         </p>
         <button
           onClick={() => setDone(null)}
@@ -206,7 +206,7 @@ export default function ApplyForm({
           <div>
             <label className="text-sm font-medium">이용 서약 *</label>
             <div className="mt-1 rounded-md bg-slate-100 p-3 text-xs leading-6 text-slate-600">
-              · 배정받은 계정은 본인만 사용하며 접속 링크를 타인에게 공유하지 않습니다.
+              · 배정받은 계정은 본인만 사용하며 타인에게 공유하지 않습니다.
               <br />· 개인정보·미공개 연구자료·내부 문서를 입력하지 않습니다.
               <br />· GNU AI 윤리가이드라인을 준수하며, 대여 종료 시 회수 절차에 협조합니다.
             </div>
@@ -220,7 +220,7 @@ export default function ApplyForm({
           <input name="website" tabIndex={-1} autoComplete="off" className="absolute -left-[9999px]" />
 
           <p className="rounded-md bg-slate-100 p-3 text-xs leading-6 text-slate-600">
-            승인·배정 결과와 접속 링크는 자동 메일이 아니라 담당자가 직접 안내합니다. 접수번호를 보관해 주세요.
+            승인·배정 후 담당자가 입력하신 이메일로 팀 워크스페이스 초대를 보냅니다. 접수번호를 보관해 주세요.
           </p>
 
           {error && <p className="text-sm text-red-700">{error}</p>}

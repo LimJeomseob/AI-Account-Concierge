@@ -165,7 +165,7 @@ if (usersFile) {
   }
 }
 
-// --- 계정: 화면에 나온 좌석만. 사용중 건이 있으면 배정 상태로 ---
+// --- 계정: 화면에 나온 계정만. 사용중 건이 있으면 배정 상태로 ---
 const accounts = new Map<string, { service: string; current: string | null }>()
 for (const r of sorted) {
   if (!r.account || !r.service) continue
@@ -258,7 +258,7 @@ const sql: string[] = [
     )
   }),
   '',
-  '-- 계정 (화면에 나온 좌석만. 접속 링크·로그인 이메일은 계정 CSV 가져오기로 등록)',
+  '-- 계정 (화면에 나온 계정만. 로그인 이메일은 계정 CSV 가져오기로 등록)',
   ...[...accounts.entries()].sort().map(
     ([id, a]) =>
       `insert into accounts (id, service, status, note) values (${q(id)}, ${q(a.service)}, '가용', ${q(NOTE)}) on conflict (id) do nothing;`,
@@ -282,7 +282,7 @@ const sql: string[] = [
     )
   }),
   '',
-  '-- 진행 중 배정이 있는 좌석은 배정 상태로 (accounts_current_assignment_status)',
+  '-- 진행 중 배정이 있는 계정은 배정 상태로 (accounts_current_assignment_status)',
   ...[...accounts.entries()]
     .filter(([, a]) => a.current)
     .sort()

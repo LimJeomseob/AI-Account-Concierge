@@ -3,7 +3,7 @@
  * t = HMAC-SHA256(APP_SECRET, message) 의 hex 앞 24자
  *  - 장애 신고: message = "inc:<배정ID>"
  * 토큰 자체는 만료가 없다. 대신 장애 신고 페이지가 배정이 「사용중」일 때만 접수한다(R26) —
- * 회수가 끝난 옛 사용자가 지금 다른 사람이 쓰는 좌석을 정지시키지 못하게.
+ * 회수가 끝난 옛 사용자가 지금 다른 사람이 쓰는 계정을 정지시키지 못하게.
  * (인수 확인 토큰은 2026-10-28 인수 확인 단계 폐지로 제거)
  */
 import { createHmac, timingSafeEqual } from 'node:crypto'

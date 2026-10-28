@@ -42,7 +42,7 @@ export const MANUAL_ACCOUNT_TRANSITIONS: Record<AccountStatus, AccountStatus[]> 
   가용: ['정지', '만료'],
   배정: ['정지'], // 장애로 접속 불가 — 연결된 건은 장애 메뉴에서 대체 배정
   회수중: ['정지'],
-  정지: ['가용', '만료'], // 가용은 이 좌석을 쥔 활성 배정이 없을 때만 (app/admin/actions.ts)
+  정지: ['가용', '만료'], // 가용은 이 계정을 쥔 활성 배정이 없을 때만 (app/admin/actions.ts)
   만료: ['가용'],
 }
 

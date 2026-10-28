@@ -1,6 +1,6 @@
 /**
- * 계정(팀 좌석) 운영 (PRD R25, §7-2 계정)
- * 좌석마다 고정 접속 링크(access_url)를 등록해 두고 배정안내 메일에 실어 보낸다(R16).
+ * 계정 운영 (PRD R25, §7-2 계정)
+ * 2026-10-29: 접속 링크 기능 폐지(R14-2) — 배정된 신청자는 관리자가 팀 워크스페이스에 이메일로 초대한다.
  */
 import 'server-only'
 import { db } from '@/lib/db'
@@ -9,41 +9,16 @@ import { assignedDaysOf } from '@/lib/assign'
 import { log, transitionAccount } from '@/lib/state'
 import type { Service } from '@/lib/types'
 
-/**
- * 접속 링크 정규화 (순수 함수).
- * 트림 후 비어 있으면 null(= 미등록). 값이 있으면 http(s) 여야 한다.
- */
-export function normalizeUrl(v: string | null | undefined): string | null {
-  const t = (v ?? '').trim()
-  if (!t) return null
-  if (!/^https?:\/\//i.test(t)) throw new Error('접속 링크는 http:// 또는 https:// 로 시작해야 합니다.')
-  return t
-}
-
-/** 좌석 접속 링크 등록·수정 (링크 값 자체는 로그에 남기지 않는다) */
-export async function setAccessUrl(accountId: string, url: string, actor: string): Promise<void> {
-  const next = normalizeUrl(url)
-  const { error } = await db()
-    .from('account_secrets')
-    .upsert(
-      { account_id: accountId, access_url: next, updated_at: new Date().toISOString() },
-      { onConflict: 'account_id' },
-    )
-  if (error) throw new Error(error.message)
-  await log(actor, 'account.access_url.set', accountId, { registered: next !== null })
-}
-
 export interface AccountImportRow {
   id: string
   service: Service
   kind?: '운영' | '예비'
   login_email?: string
-  access_url?: string
   activated_on?: string
   expires_on?: string
 }
 
-/** CSV 가져오기 (계정 + 접속 정보 동시 upsert) */
+/** CSV 가져오기 (계정 + 로그인 이메일 upsert). CSV 에 「접속링크」 열이 있어도 무시한다. */
 export async function importAccounts(rows: AccountImportRow[], actor: string): Promise<number> {
   let n = 0
   for (const r of rows) {
@@ -60,23 +35,21 @@ export async function importAccounts(rows: AccountImportRow[], actor: string): P
     )
     if (error) throw new Error(`${r.id}: ${error.message}`)
 
-    const { error: sErr } = await db().from('account_secrets').upsert(
-      {
-        account_id: r.id,
-        login_email: r.login_email ?? null,
-        access_url: normalizeUrl(r.access_url),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'account_id' },
-    )
-    if (sErr) throw new Error(`${r.id} 접속 정보: ${sErr.message}`)
+    // 로그인 이메일 열이 있을 때만 갱신 — 열이 없는 CSV 로 기존 값을 지우지 않는다
+    if (r.login_email !== undefined) {
+      const { error: sErr } = await db().from('account_secrets').upsert(
+        { account_id: r.id, login_email: r.login_email || null, updated_at: new Date().toISOString() },
+        { onConflict: 'account_id' },
+      )
+      if (sErr) throw new Error(`${r.id} 로그인 이메일: ${sErr.message}`)
+    }
     n += 1
   }
   await log(actor, 'account.import', null, { count: n })
   return n
 }
 
-/** CSV 텍스트 → 행 (헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일) */
+/** CSV 텍스트 → 행 (헤더: 계정번호,서비스,구분,로그인이메일,활성화일,만료일 — 「계정ID」 헤더도 허용) */
 export function parseAccountCsv(text: string): AccountImportRow[] {
   const lines = text
     .split(/\r?\n/)
@@ -85,14 +58,13 @@ export function parseAccountCsv(text: string): AccountImportRow[] {
   if (lines.length === 0) return []
   const head = splitCsvLine(lines[0])
   const idx = (name: string) => head.findIndex((h) => h.replace(/\s/g, '') === name)
-  const cId = idx('계정ID')
+  const cId = idx('계정번호') >= 0 ? idx('계정번호') : idx('계정ID')
   const cService = idx('서비스')
   const cKind = idx('구분')
   const cEmail = idx('로그인이메일')
-  const cUrl = idx('접속링크')
   const cAct = idx('활성화일')
   const cExp = idx('만료일')
-  if (cId < 0 || cService < 0) throw new Error('CSV 헤더에 「계정ID」·「서비스」가 필요합니다.')
+  if (cId < 0 || cService < 0) throw new Error('CSV 헤더에 「계정번호」·「서비스」가 필요합니다.')
 
   const out: AccountImportRow[] = []
   for (const line of lines.slice(1)) {
@@ -105,7 +77,6 @@ export function parseAccountCsv(text: string): AccountImportRow[] {
       service: svc === 'Claude' || svc === 'CL' ? 'Claude' : 'GPT',
       kind: (c[cKind] ?? '').trim() === '예비' ? '예비' : '운영',
       login_email: cEmail >= 0 ? c[cEmail]?.trim() : undefined,
-      access_url: cUrl >= 0 ? c[cUrl]?.trim() : undefined,
       activated_on: cAct >= 0 ? normalizeDate(c[cAct]) : undefined,
       expires_on: cExp >= 0 ? normalizeDate(c[cExp]) : undefined,
     })

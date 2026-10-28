@@ -11,7 +11,7 @@ import { markOk, withLock } from '@/lib/lock'
 import { rebuildAlerts } from '@/lib/alerts'
 import { dispatchQueue, type DispatchResult } from '@/lib/mail/dispatch'
 import { log } from '@/lib/state'
-import { autoAssignAll, endExpiredRentals, type AssignScope } from '@/lib/ops/assignments'
+import { endExpiredRentals } from '@/lib/ops/assignments'
 import { refreshAccountStats } from '@/lib/ops/accounts'
 
 export interface DailyError {
@@ -22,7 +22,6 @@ export interface DailyError {
 export interface DailyResult {
   today: string
   rent_ended: string[]
-  assigned: string[]
   alerts: number
   mail: DispatchResult
   stats_updated: number
@@ -39,7 +38,6 @@ function emptyResult(today: string): DailyResult {
   return {
     today,
     rent_ended: [],
-    assigned: [],
     alerts: 0,
     mail: { sent: 0, failed: 0, remaining: 0 },
     stats_updated: 0,
@@ -47,9 +45,8 @@ function emptyResult(today: string): DailyResult {
   }
 }
 
-/** `scope` 는 통합 테스트 격리용(자동 배정 범위 제한). 운영 호출은 넘기지 않는다. */
-export async function runDaily(actor = 'system', today: string = todayKST(), scope?: AssignScope): Promise<DailyResult> {
-  const r = await withLock('cron.daily', DAILY_LOCK_TTL_MS, () => runDailyUnlocked(actor, today, scope))
+export async function runDaily(actor = 'system', today: string = todayKST()): Promise<DailyResult> {
+  const r = await withLock('cron.daily', DAILY_LOCK_TTL_MS, () => runDailyUnlocked(actor, today))
   if (r.locked) {
     await log(actor, 'cron.daily.skip', null, { today, reason: 'locked' })
     return { ...emptyResult(today), skipped: 'locked' }
@@ -57,7 +54,7 @@ export async function runDaily(actor = 'system', today: string = todayKST(), sco
   return r.value
 }
 
-async function runDailyUnlocked(actor: string, today: string, scope?: AssignScope): Promise<DailyResult> {
+async function runDailyUnlocked(actor: string, today: string): Promise<DailyResult> {
   await log(actor, 'cron.daily.start', null, { today })
   const errors: DailyError[] = []
 
@@ -84,11 +81,7 @@ async function runDailyUnlocked(actor: string, today: string, scope?: AssignScop
   // 3-1. alerts·accounts.alert 재생성 (R22)
   const alertCount = await step('회수 알림 재생성', () => rebuildAlerts(today), 0)
 
-  // 4. 승인 대기 자동 배정 (R14)
-  const assigned = await step('자동 배정', () => autoAssignAll(actor, today, scope), [] as string[])
-
-  // 4-1. 배정으로 알림 대상이 바뀌었을 수 있으므로 다시 계산
-  await step('회수 알림 재계산', () => rebuildAlerts(today), 0)
+  // 4. (폐지 2026-10-29) 승인 대기 자동 배정 — 배정은 「승인 건 배정 + 메일 내려받기」로만(R14)
 
   // 5. 메일 대기열 발송
   const mail = await step('메일 발송', () => dispatchQueue(), { sent: 0, failed: 0, remaining: 0 })
@@ -102,7 +95,6 @@ async function runDailyUnlocked(actor: string, today: string, scope?: AssignScop
   const result: DailyResult = {
     today,
     rent_ended: rentEnded,
-    assigned,
     alerts: alertCount,
     mail,
     stats_updated: statsUpdated,
