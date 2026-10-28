@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation'
 import LoginButton from './LoginButton'
+import { isAdmin, sessionEmail } from '@/lib/auth'
+import { DEFAULT_AFTER_LOGIN } from '@/lib/redirect'
 import { Card } from '@/components/ui'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
@@ -18,6 +21,12 @@ function describeError(code: string): string {
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams
+
+  // 이미 로그인한 관리자는 바로 대시보드로, 허용 목록에 없으면 안내 화면으로 (오류 안내가 있을 때는 그대로 보여 준다)
+  if (!error) {
+    const email = await sessionEmail()
+    if (email) redirect((await isAdmin(email)) ? DEFAULT_AFTER_LOGIN : '/admin/denied')
+  }
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
