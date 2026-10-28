@@ -3,9 +3,9 @@
 경상국립대학교 AI융합원 · 2026학년도 하반기 「AI 유료계정 지원 계획(안)」 운영 시스템
 사양: [`docs/PRD.md`](docs/PRD.md) · 운영: [`docs/운영매뉴얼.md`](docs/운영매뉴얼.md)
 
-ChatGPT Plus 50 + Claude Pro 50 계정을 하반기 교육 프로그램 참여자에게 회전 대여하고,
-신청 → 승인 → 자동 배정 → 메일 안내 → 인수 확인 → 종료 → 회수 → 재배정 전 과정을
-관리자 화면 하나에서 처리한다.
+ChatGPT Team 50 + Claude Team 50 좌석(고정 접속 링크)을 하반기 교육 프로그램 참여자에게 회전 대여하고,
+신청 → 승인 → 자동 배정(즉시 사용중) → 담당자 직접 안내 → 대여 종료 → 회수 → 재배정 전 과정을
+관리자 화면 하나에서 처리한다. 신청자에게 자동 메일은 보내지 않는다(관리자 점검·장애·스냅샷 메일만).
 
 ## 스택
 
@@ -32,7 +32,7 @@ cp .env.example .env.local     # 값 채우기
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 DB 접근 |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 브라우저 Auth 전용 |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | 메일 발송 — 발신 Gmail 계정과 16자리 앱 비밀번호 (하나라도 없으면 대기열에 보관만) |
-| `APP_SECRET` | 인수·장애 링크 HMAC 서명 키 — `openssl rand -hex 32` |
+| `APP_SECRET` | 장애 신고 링크 HMAC 서명 키 — `openssl rand -hex 32` |
 | `CRON_SECRET` | Cron 엔드포인트 인증 — `openssl rand -hex 32` |
 | `INITIAL_ADMIN_EMAIL` | 시드로 등록할 최초 관리자 |
 
@@ -83,9 +83,9 @@ cp docker/.env.docker.example docker/.env  # 키·비밀 값 입력
 
 `vercel.json` 이 다음 두 작업을 등록한다 (UTC 00:00 = KST 09:00).
 
-- `/api/cron/daily` — 미인수 취소, 대여 종료, 자동 배정,
-  메일 발송, 계정 통계, 구독 만료, 관리자 점검 메일 (멱등)
-- `/api/cron/monthly` — 월간 실적 스냅샷 + CSV + 관리자 메일
+- `/api/cron/daily` — 대여 종료, 자동 배정, 메일 발송, 계정 통계, 구독 만료,
+  관리자 점검 메일 (멱등·실행 잠금, 단계 오류는 점검 메일에 보고하고 500 응답)
+- `/api/cron/monthly` — 월간 실적 스냅샷 + CSV + 관리자 메일 (매월 1일 UTC 00:10)
 
 두 엔드포인트는 `Authorization: Bearer $CRON_SECRET` 헤더를 요구한다.
 관리자 대시보드의 「일일 작업 지금 실행」 버튼도 같은 함수를 호출한다.
@@ -93,7 +93,7 @@ cp docker/.env.docker.example docker/.env  # 키·비밀 값 입력
 ## 검증
 
 ```bash
-npm test              # 도메인 로직 단위 테스트 (Vitest)
+npm test              # 도메인 로직 단위 테스트 (Vitest) — GitHub Actions CI(.github/workflows/ci.yml)가 PR 마다 tsc·test·build 를 실행
 npm run build         # 타입체크 + 프로덕션 빌드
 
 # 수용 기준 T1~T13 (PRD §16) — 실제 Supabase 연결 필요, 시범/스테이징에서만.
