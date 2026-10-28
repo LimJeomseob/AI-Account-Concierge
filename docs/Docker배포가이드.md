@@ -434,7 +434,7 @@ docker rm -f restore-test
 
 - `.env` 파일은 절대 git 에 올리지 않습니다(`.gitignore` 에 이미 제외돼 있음).
 - `APP_SECRET`, `CRON_SECRET`, `supabase-project/.env` 전체를 기관 비밀번호 관리소에 보관합니다.
-- `APP_SECRET` 을 바꾸면 이미 발송된 인수 확인·장애 신고 링크가 모두 무효가 됩니다. **바꾸지 마세요.**
+- `APP_SECRET` 을 바꾸면 이미 전달한 장애 신고 링크가 모두 무효가 됩니다. **바꾸지 마세요.**
 
 ### 이 문서로 검증한 것 / 못 한 것 (Fact)
 
