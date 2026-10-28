@@ -81,7 +81,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
 
     // 설정 확인(없으면 시드되지 않은 DB)
     const s = await M.settings.getSettings()
-    expect(s.account_expiry_alert_days).toBeGreaterThan(0)
+    expect(s.target_headcount).toBeGreaterThan(0)
 
     // 프로그램 2개: 기간 설정 / 미설정
     await db().from('programs').insert([
@@ -381,7 +381,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
 
     expect(second.rent_ended).toHaveLength(0)
     expect(second.alerts).toBe(first.alerts)
-    expect(second.digest_recipients).toBe(0) // 같은 날 점검 메일 중복 생성 안 함
+    expect(second.errors).toHaveLength(0)
   }, 120_000)
 
   // T10(개인정보 파기 후 실적 유지)은 파기 기능 제거(2026-10-28, R30 개정)로 삭제 — 파기는 운영매뉴얼의 SQL 절차로 처리

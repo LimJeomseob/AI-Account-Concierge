@@ -6,8 +6,8 @@
 import type { AccountStatus, AssignmentStatus } from '@/lib/types'
 
 export const ASSIGNMENT_TRANSITIONS: Record<AssignmentStatus, AssignmentStatus[]> = {
-  신청: ['승인', '반려', '취소'],
-  승인: ['사용중', '배정', '취소', '반려'], // 배정 즉시 사용중 (인수 확인 단계 폐지, 2026-10-28). '배정' 은 구 데이터 호환용
+  신청: ['승인', '취소'], // 반려는 2026-10-29 폐지(R17) — 기존 「반려」 건은 표시만
+  승인: ['사용중', '배정', '취소'], // 배정 즉시 사용중 (인수 확인 단계 폐지, 2026-10-28). '배정' 은 구 데이터 호환용
   배정: ['사용중', '인수기한초과', '회수중', '취소'], // 구 상태 — 신규 전이 없음
   사용중: ['회수중', '취소'],
   회수중: ['회수완료', '취소'],
@@ -37,7 +37,6 @@ export function canTransitionAccount(from: AccountStatus, to: AccountStatus): bo
  * 관리자가 「계정 상태 변경」으로 직접 고를 수 있는 전이 (ACCOUNT_TRANSITIONS 의 부분집합).
  * 「배정」·「회수중」은 배정·대여 종료·취소가 만드는 시스템 상태라 손으로 만들지 않는다
  * (연결된 신청 건 없이 「배정」이 되거나, 회수 체크리스트(R24) 없이 「회수중 → 가용」이 되는 것 방지).
- * 배정·회수중 좌석의 구독 만료는 회수를 끝낸 뒤 처리한다.
  */
 export const MANUAL_ACCOUNT_TRANSITIONS: Record<AccountStatus, AccountStatus[]> = {
   가용: ['정지', '만료'],

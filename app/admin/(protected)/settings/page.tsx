@@ -23,8 +23,6 @@ export default async function SettingsPage() {
 
       <Card title="운영 설정">
         <form action={settingsSaveAction} className="grid gap-3 sm:grid-cols-3">
-          <Num name="account_expiry_alert_days" label="구독 만료 D-N 알림" value={s.account_expiry_alert_days} />
-          <Num name="suspension_rate_warn" label="정지율 경고(%)" value={s.suspension_rate_warn} />
           <Num name="target_headcount" label="목표 연인원" value={s.target_headcount} />
           <Txt name="program_id_prefix" label="프로그램ID 접두" value={s.program_id_prefix} />
           <Txt name="from_name" label="발신자 표시명" value={s.from_name} />
@@ -37,7 +35,7 @@ export default async function SettingsPage() {
           <Txt name="privacy_purpose" label="이용 목적" value={s.privacy_purpose} />
           <Txt name="privacy_period" label="보유 기간" value={s.privacy_period} />
           <label className="text-sm sm:col-span-3">
-            <span className="text-xs text-slate-600">점검 메일 수신 관리자 (줄바꿈·쉼표 구분)</span>
+            <span className="text-xs text-slate-600">관리자 메일 수신자 — 장애 신고·월간 스냅샷 (줄바꿈·쉼표 구분)</span>
             <textarea name="admin_emails" rows={2} defaultValue={s.admin_emails.join('\n')} className={inputClass} />
           </label>
           <label className="text-sm sm:col-span-3">

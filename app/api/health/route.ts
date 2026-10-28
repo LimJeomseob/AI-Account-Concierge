@@ -1,7 +1,6 @@
 /**
  * GET /api/health (PRD §12-3)
- *  - 기본: DB 연결만 판정(503 = DB 다운). Docker 헬스체크가 이 응답을 쓴다 — 여기서 cron 지연까지 503 으로
- *    만들면 앱이 unhealthy 가 되어 cron 컨테이너(depends_on: service_healthy)가 시작되지 못하는 교착이 생긴다.
+ *  - 기본: DB 연결만 판정(503 = DB 다운).
  *  - `?strict=1`: 외부 업타임 감시(UptimeRobot 등)용. 일일 작업이 26시간 넘게 성공하지 못했으면 503.
  * 내부 오류 문구는 공개 응답에 싣지 않는다(서버 로그에만).
  */

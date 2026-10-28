@@ -11,7 +11,7 @@ import { log } from '@/lib/state'
 import { AUTH_COOKIE_NAME, serverSupabaseUrl } from '@/lib/auth-cookie'
 
 export function authEnv() {
-  // 서버에서는 내부망 주소로 Supabase 에 접근한다 (Docker: http://kong:8000).
+  // 서버 전용 주소(SUPABASE_URL)가 있으면 그 주소로 Supabase 에 접근한다.
   const url = serverSupabaseUrl()
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!key) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY 환경변수가 없습니다.')

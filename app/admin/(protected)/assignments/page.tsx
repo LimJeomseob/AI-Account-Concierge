@@ -7,7 +7,7 @@ import CopyButton from '@/components/CopyButton'
 import { CHECKLIST_FIELDS, L } from '@/lib/labels'
 import { applicantEmails, exportQuery } from '@/lib/ops/export'
 import { incidentUrl } from '@/lib/token'
-import { approveAction, cancelAction, checklistAction, completeReturnAction, rejectAction } from '@/app/admin/actions'
+import { approveAction, cancelAction, checklistAction, completeReturnAction } from '@/app/admin/actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,14 +108,6 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
           <ListTable rows={rows ?? []} links={links} />
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <Button>선택 승인</Button>
-            <Button variant="danger" formAction={rejectAction}>
-              선택 반려
-            </Button>
-            <input
-              name="reason"
-              placeholder="반려 사유"
-              className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
-            />
           </div>
         </form>
       </Card>

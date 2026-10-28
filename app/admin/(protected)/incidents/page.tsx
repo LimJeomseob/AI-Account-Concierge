@@ -28,14 +28,9 @@ export default async function IncidentsPage() {
         <Stat label="정지" value={byType['정지']} />
         <Stat label="로그인불가" value={byType['로그인불가']} />
         <Stat label="기타" value={byType['기타']} />
-        <Stat label="정지율(%)" value={rate} warn={rate > s.suspension_rate_warn} />
+        <Stat label="정지율(%)" value={rate} />
       </div>
 
-      {rate > s.suspension_rate_warn && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          ⚠ 정지율 {rate}% — 경고 임계값 {s.suspension_rate_warn}% 초과. 업체 협의가 필요합니다.
-        </div>
-      )}
 
       <Card title="장애 목록">
         <Table head={['ID', '접수일시', '계정', '배정ID', '유형', '증상', '신고자', '상태', '대체계정', '조치']}>

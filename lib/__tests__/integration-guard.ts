@@ -5,7 +5,7 @@
  *  - ACCEPTANCE_CONFIRM=yes
  *  - SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_SECRET 존재
  *  - ACCEPTANCE_DB_HOST 가 SUPABASE_URL 의 호스트와 같음 — 어느 DB 를 쓰는지 **이름을 써서** 확인시킨다.
- *    (예: ACCEPTANCE_DB_HOST=abcd1234.supabase.co, 로컬 Docker 는 localhost)
+ *    (예: ACCEPTANCE_DB_HOST=abcd1234.supabase.co)
  */
 export function acceptanceEnabled(env: Record<string, string | undefined> = process.env): boolean {
   if (env.ACCEPTANCE_CONFIRM !== 'yes') return false

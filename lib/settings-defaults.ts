@@ -7,8 +7,6 @@
  */
 
 export interface Settings {
-  account_expiry_alert_days: number
-  suspension_rate_warn: number
   admin_emails: string[]
   reply_to: string
   from_name: string
@@ -26,8 +24,6 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  account_expiry_alert_days: 14,
-  suspension_rate_warn: 5,
   admin_emails: [],
   reply_to: '',
   from_name: '경상국립대학교 AI융합원',

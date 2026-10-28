@@ -10,7 +10,4 @@ next-env.d.ts
 .vercel
 .DS_Store
 coverage/
-docker/backups/
 data/import/
-docker/caddy_data/
-supabase-project/

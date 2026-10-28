@@ -9,7 +9,7 @@ async function handle(req: Request) {
   if (!cronAuthorized(req)) return Response.json({ ok: false, msg: '인증 실패' }, { status: 401 })
   try {
     const result = await runDaily('system')
-    // 단계 오류가 있으면 500 — Vercel Cron 로그·Docker curl -f 에 실패로 남는다(점검 메일에도 표시됨)
+    // 단계 오류가 있으면 500 — Vercel Cron 로그에 실패로 남고 대시보드에 경고가 뜬다
     const ok = result.errors.length === 0
     return Response.json({ ok, result }, { status: ok ? 200 : 500 })
   } catch (e) {

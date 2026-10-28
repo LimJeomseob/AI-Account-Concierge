@@ -45,7 +45,7 @@ export interface DispatchResult {
   sent: number
   failed: number
   remaining: number
-  /** 발송을 중간에 멈춘 이유 — 점검 메일·대시보드에 표시 */
+  /** 발송을 중간에 멈춘 이유 — 대시보드에 표시 */
   stopped?: 'auth' | 'limit' | 'locked'
 }
 
