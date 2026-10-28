@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   admin_emails: [],
   reply_to: '',
   from_name: '경상국립대학교 AI융합원',
-  from_email: 'noreply@example.ac.kr',
+  from_email: '', // Gmail SMTP 전환 후 미사용 — From 은 GMAIL_USER 로 고정 (lib/mail/dispatch.ts)
   edu_url: 'https://www.youtube.com/watch?v=XzMC4jGM_P0&t=2s',
   rules_url: '',
   pledge_url: '',

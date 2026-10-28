@@ -34,7 +34,7 @@ export default async function SettingsPage() {
           <Num name="target_headcount" label="목표 연인원" value={s.target_headcount} />
           <Txt name="program_id_prefix" label="프로그램ID 접두" value={s.program_id_prefix} />
           <Txt name="from_name" label="발신자 표시명" value={s.from_name} />
-          <Txt name="from_email" label="발신 주소" value={s.from_email} />
+          <Txt name="from_email" label="발신 주소 (미사용 — Gmail 발송은 GMAIL_USER 로 고정)" value={s.from_email} />
           <Txt name="reply_to" label="회신 주소" value={s.reply_to} />
           <Txt name="edu_url" label="윤리가이드라인 영상 URL" value={s.edu_url} />
           <Txt name="rules_url" label="이용수칙 URL" value={s.rules_url} />

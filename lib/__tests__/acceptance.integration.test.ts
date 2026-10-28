@@ -7,7 +7,7 @@
  * 주의
  *  - 실제 DB에 쓰고 지운다. **반드시 시범/스테이징 프로젝트에서 실행할 것.**
  *  - 필요한 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_SECRET
- *  - RESEND_API_KEY 는 이 스위트 안에서 강제로 비운다. 메일은 대기열에만 쌓이고 실제로 나가지 않는다.
+ *  - GMAIL_APP_PASSWORD 는 이 스위트 안에서 강제로 비운다. 메일은 대기열에만 쌓이고 실제로 나가지 않는다.
  *  - 모든 테스트 데이터는 `ZTEST` 접두를 쓰고 마지막에 삭제한다.
  */
 import 'dotenv/config'
@@ -20,7 +20,7 @@ const enabled =
   !!process.env.APP_SECRET
 
 // 실제 발송 차단 (대기열까지만 확인한다)
-process.env.RESEND_API_KEY = ''
+process.env.GMAIL_APP_PASSWORD = ''
 
 const RUN = `ZTEST${Date.now().toString(36).toUpperCase()}`
 const PROG_OPEN = `${RUN}-P1`
@@ -421,7 +421,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
   })
 
   it('T13 — 메일 대기열은 상한만큼만 처리하고 나머지는 남는다', async () => {
-    // RESEND_API_KEY 가 비어 있어 실제 발송은 없고 대기열에 남는다.
+    // GMAIL_APP_PASSWORD 가 비어 있어 실제 발송은 없고 대기열에 남는다.
     const { dispatchQueue } = await import('@/lib/mail/dispatch')
     const result = await dispatchQueue(5)
     expect(result.sent).toBe(0)

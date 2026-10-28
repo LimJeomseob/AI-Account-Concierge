@@ -14,7 +14,7 @@ ChatGPT Plus 50 + Claude Pro 50 계정을 하반기 교육 프로그램 참여�
 | 프론트/서버 | Next.js(App Router) + TypeScript + Tailwind |
 | DB | Supabase Postgres (`ap-northeast-2` 서울) — 서버에서 service role 로만 접근, RLS 전면 잠금 |
 | 인증 | Supabase Auth Google Provider + `admins` 허용 목록 |
-| 메일 | Resend (대기열 경유 발송) |
+| 메일 | Gmail SMTP — nodemailer, 앱 비밀번호 (대기열 경유 발송) |
 | 배치 | Vercel Cron — 매일 09:00 KST, 매월 1일 |
 
 ## 설치
@@ -31,7 +31,7 @@ cp .env.example .env.local     # 값 채우기
 | `NEXT_PUBLIC_APP_URL` | 배포 주소 (메일 링크 생성에 사용) |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 DB 접근 |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 브라우저 Auth 전용 |
-| `RESEND_API_KEY` | 메일 발송 (없으면 대기열에 보관만) |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | 메일 발송 — 발신 Gmail 계정과 16자리 앱 비밀번호 (하나라도 없으면 대기열에 보관만) |
 | `APP_SECRET` | 인수·장애 링크 HMAC 서명 키 — `openssl rand -hex 32` |
 | `CRON_SECRET` | Cron 엔드포인트 인증 — `openssl rand -hex 32` |
 | `INITIAL_ADMIN_EMAIL` | 시드로 등록할 최초 관리자 |

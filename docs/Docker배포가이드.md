@@ -160,7 +160,7 @@ cp docker/.env.docker.example docker/.env
 | `APP_SECRET` | `openssl rand -hex 32` |
 | `CRON_SECRET` | `openssl rand -hex 32` |
 | `INITIAL_ADMIN_EMAIL` | 관리자로 쓸 본인 Gmail |
-| `RESEND_API_KEY` | 로컬 시험은 **비워 둠** (메일이 실제로 나가지 않고 대기열에만 쌓임) |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | 로컬 시험은 **비워 둠** (메일이 실제로 나가지 않고 대기열에만 쌓임) |
 
 > Windows 에 `openssl` 이 없으면 Git Bash 에서 실행하거나, Studio → SQL Editor 에서
 > `select encode(gen_random_bytes(32),'base64');` 로 만들어도 됩니다.
@@ -300,7 +300,7 @@ DOMAIN=gnu-ai.kr
 SUPABASE_URL=http://kong:8000
 ```
 키·비밀 값은 A-6 표와 같은 방법으로. **APP_SECRET·CRON_SECRET 은 로컬과 다른 새 값**을 만들고, 기관 비밀번호 관리소에 보관합니다.
-`RESEND_API_KEY` 는 실제 값을 넣습니다(도메인 인증은 `docs/배포체크리스트.md` 3번).
+`GMAIL_USER`·`GMAIL_APP_PASSWORD` 는 실제 값을 넣습니다(앱 비밀번호 발급은 `docs/배포체크리스트.md` 3번).
 
 ### B-5. 앱 + HTTPS 띄우기
 
@@ -387,7 +387,7 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 | 컨테이너가 `unhealthy` | `docker compose logs <이름>` 으로 원인 확인. Supabase 쪽은 첫 기동 시 2~3분 걸릴 수 있음 |
 | 포트 충돌 (`address already in use`) | 다른 프로그램이 3000/8000/80/443 사용 중. `sudo lsof -i :3000` 으로 찾아 종료하거나 `docker/.env` 의 `APP_PORT` 변경 |
 | 크론이 UTC 로 돔 | `docker compose exec cron date` 가 KST 가 아니면 이미지 재빌드: `docker compose build cron && docker compose up -d cron` |
-| 메일이 안 나감 | `RESEND_API_KEY` 비어 있음 또는 도메인 미인증. 관리자 화면 설정 → 발신 테스트 메일로 확인 |
+| 메일이 안 나감 | `GMAIL_USER` 또는 `GMAIL_APP_PASSWORD` 비어 있음, 앱 비밀번호 오류, 또는 Gmail 일일 한도 초과. 관리자 화면 설정 → 발신 테스트 메일로 확인 |
 | 디스크 부족 | `docker system prune -f` 로 안 쓰는 이미지 정리. `docker/backups` 오래된 파일 정리 |
 
 ---
@@ -411,7 +411,7 @@ gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
 | 파일 | 내용 |
 |---|---|
 | `supabase-project/.env` | Supabase 스택 전용. `POSTGRES_PASSWORD`, `JWT_SECRET`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `DASHBOARD_*`, `SITE_URL`, `API_EXTERNAL_URL`, `SUPABASE_PUBLIC_URL`, `KONG_HTTP_PORT`, `GOOGLE_*` |
-| `AI-Account-Concierge/docker/.env` | 앱 스택 전용. `NEXT_PUBLIC_*`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_SECRET`, `CRON_SECRET`, `RESEND_API_KEY`, `DOMAIN` |
+| `AI-Account-Concierge/docker/.env` | 앱 스택 전용. `NEXT_PUBLIC_*`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_SECRET`, `CRON_SECRET`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `DOMAIN` |
 | `AI-Account-Concierge/.env.local` | 내 PC 에서 시드·가져오기 스크립트를 돌릴 때만. `docker/.env` 복사본에서 `SUPABASE_URL` 만 localhost 로 |
 
 같은 키를 다른 이름으로 두 번 쓰는 곳:

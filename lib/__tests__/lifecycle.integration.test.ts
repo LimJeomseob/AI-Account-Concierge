@@ -6,7 +6,7 @@
  *   ACCEPTANCE_CONFIRM=yes SIM_EMAIL=eros4424@gmail.com npm run test:acceptance -- lifecycle
  *
  *  - 실제 DB 에 쓰고 마지막에 지운다. 시범/스테이징 프로젝트에서만 실행할 것.
- *  - RESEND_API_KEY 는 강제로 비운다(메일은 대기열까지만, 실제 발송 없음).
+ *  - GMAIL_APP_PASSWORD 는 강제로 비운다(메일은 대기열까지만, 실제 발송 없음).
  *  - 접속 링크가 있는 좌석 1개 + 없는 좌석 1개를 만들어 R14-2·R16 보류 동작까지 확인한다.
  */
 import 'dotenv/config'
@@ -18,7 +18,7 @@ const enabled =
   !!process.env.SUPABASE_SERVICE_ROLE_KEY &&
   !!process.env.APP_SECRET
 
-process.env.RESEND_API_KEY = ''
+process.env.GMAIL_APP_PASSWORD = ''
 
 const APPLICANT = (process.env.SIM_EMAIL ?? 'eros4424@gmail.com').toLowerCase()
 const RUN = `ZSIM${Date.now().toString(36).toUpperCase()}`

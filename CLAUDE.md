@@ -1,11 +1,11 @@
 # 프로젝트: AI 유료계정 관리시스템 (GNU AI융합원)
 
 - 사양: `docs/PRD.md` 가 단일 진실. 규칙 번호(R1~R33)를 커밋 메시지·주석에 인용.
-- 스택: Next.js App Router + TS + Tailwind, Supabase(service role, 서버 전용), Resend, Vercel Cron.
+- 스택: Next.js App Router + TS + Tailwind, Supabase(service role, 서버 전용), Gmail SMTP(nodemailer), Vercel Cron.
 - 시간대: 모든 날짜 계산은 Asia/Seoul. 유틸 `lib/date.ts` 의 `todayKST()` 만 사용.
 - DB 접근: `lib/db.ts` 의 서버 클라이언트만. 브라우저 번들에 Supabase service role 키 절대 포함 금지. 좌석 접속 링크(`account_secrets.access_url`)는 서버 전용이며 로그에 남기지 않는다.
 - 상태 전이: `lib/state.ts` 의 `transitionAssignment()` / `transitionAccount()` 를 통해서만 변경, 항상 `logs` 기록.
-- 메일: 직접 발송 금지. `lib/mail/queue.ts` 로 대기열에 넣고 `lib/mail/dispatch.ts` 가 발송.
+- 메일: 직접 발송 금지. `lib/mail/queue.ts` 로 대기열에 넣고 `lib/mail/dispatch.ts` 가 Gmail SMTP(`GMAIL_USER` + `GMAIL_APP_PASSWORD`)로 발송. 둘 중 하나라도 비면 대기열에만 쌓인다.
 - 테스트: 도메인 로직(배정·만료·알림·지표)은 순수 함수로 분리하고 Vitest 단위 테스트.
 - 한글 UI, 라벨은 `lib/labels.ts` 에서 관리.
 - 비밀 값은 `.env.local`, 예시는 `.env.example` 에 유지.

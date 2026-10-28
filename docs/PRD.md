@@ -13,7 +13,7 @@
 |---|---|
 | 목적 | ChatGPT Team 50 + Claude Team 50 좌석(각 6개월)을 하반기 교육 프로그램 참여자에게 **회전 대여**하고, 프로그램별 사용 인원(연인원 600 목표)을 실적으로 관리 |
 | 대체 대상 | Google Sheets + Apps Script 구현본(Code.gs ~1,200행, 모의 검증 완료). 기능·규칙은 그대로 계승, 구현 기술만 교체 |
-| 스택(확정) | Next.js(App Router, TypeScript, Tailwind, shadcn/ui) + Supabase(Postgres, Auth, 서울 리전) + Resend(메일) + Vercel(호스팅·Cron) |
+| 스택(확정) | Next.js(App Router, TypeScript, Tailwind, shadcn/ui) + Supabase(Postgres, Auth, 서울 리전) + Gmail SMTP(메일, nodemailer) + Vercel(호스팅·Cron) |
 | 관리자 인증(확정) | Google 로그인 + 허용 이메일 목록 |
 | 계정 모델(확정) | 팀 계정(ChatGPT Team·Claude Team, 관리자 계정 gnuxai.ac.kr) 좌석 대여. 좌석별 **고정 접속 링크**를 안내하고 비밀번호는 다루지 않음 |
 | 신청 페이지(확정) | 기존 GitHub Pages에 HTML 블록 삽입, 새 백엔드 API 호출(CORS 허용) |
@@ -65,7 +65,7 @@
 [관리자 브라우저] ----Google 로그인---> [Next.js /admin/* (Server Actions)]
 [Vercel Cron 00:00 UTC(=09:00 KST)] -> [Next.js /api/cron/daily, /api/cron/monthly]
                  Next.js(Vercel) --service role--> Supabase Postgres(서울)
-                 Next.js(Vercel) --API-----------> Resend(메일)
+                 Next.js(Vercel) --SMTP(nodemailer)> Gmail(smtp.gmail.com:465, 메일)
 ```
 
 | 구성요소 | 결정 | 근거·제약 (Fact) |
@@ -74,7 +74,7 @@
 | DB | Supabase Postgres, 리전 `ap-northeast-2`(서울) | Free: 500MB, 1주 비활동 시 일시정지, 백업 없음 / Pro $25/월~: 일일 백업 7일, 일시정지 없음 |
 | 인증 | Supabase Auth Google Provider + `admins` 허용 목록 | — |
 | DB 접근 | 서버(Server Actions·Route Handlers)에서 service role 키로만 접근. 브라우저에서 Supabase 직접 호출 없음, RLS는 「anon/authenticated 전부 거부」로 잠금 | 좌석 접속 정보 노출 방지 단순화 (제안, High) |
-| 메일 | Resend, 발신 도메인 인증 필요 | Free: 3,000통/월·100통/일·도메인 3개 / Pro $20/월: 50,000통/월, 일일 한도 없음 |
+| 메일 | Gmail SMTP(nodemailer, smtp.gmail.com:465, 앱 비밀번호). 환경변수 `GMAIL_USER`(발신 계정) + `GMAIL_APP_PASSWORD`(16자리 앱 비밀번호), 도메인 인증 불필요 | 개인 Gmail 약 500통/일(수신자 기준) / Google Workspace 2,000통/일. 한도 초과(5.4.5) 시 발송 중단 후 익일 재시도 |
 | 스케줄 | Vercel Cron(`vercel.json`) | Hobby: 하루 1회, 실행 시각 ±59분 / Pro: 분 단위 |
 | 호스팅 | Vercel | Hobby 플랜은 비상업·개인 용도 조건. 대학 사업 적용 가능 여부는 별도 확인 필요(§13) |
 
@@ -95,7 +95,7 @@
 | admin_emails | [] | 점검 메일 수신 관리자(JSON 배열) |
 | reply_to | (공용 메일) | 참여자 회신 주소 |
 | from_name | 경상국립대학교 AI융합원 | 발신자 표시명 |
-| from_email | noreply@<인증 도메인> | Resend 인증 도메인 주소 |
+| from_email | (미사용) | Gmail 이 From 을 인증 계정(`GMAIL_USER`)으로 고정하므로 쓰이지 않음. 화면에는 남아 있음 |
 | edu_url | https://www.youtube.com/watch?v=XzMC4jGM_P0&t=2s | GNU AI 윤리가이드라인 영상 |
 | rules_url / pledge_url | '' | 이용수칙·서약 문서 링크 |
 | privacy_items | 이름, 소속, 구분, 이메일, 연락처 | 개인정보 고지 |
@@ -131,7 +131,7 @@
 **mail_templates** — `key PK`(배정안내|접수안내), `subject`, `body`, `placeholders`(참고 문자열). 기본 문구는 §8.
 
 **mail_queue** — 발송 대기열: `id, to_email, subject, body_text, body_html, kind`(assignment|intake|digest|incident|snapshot), `ref_id`, `status`(pending|sent|failed), `attempts`, `last_error`, `created_at`, `sent_at`
-- Resend 일일 한도(Free 100통)를 넘지 않도록 대기열에서 순차 발송, 실패는 다음 일일 작업에서 재시도.
+- Gmail 일일 한도(개인 약 500통/일, Workspace 2,000통/일)를 넘지 않도록 대기열에서 순차 발송(1회 상한 `DEFAULT_BATCH` 200), 실패는 다음 일일 작업에서 재시도. Gmail 일일 한도 오류(5.4.5)가 나면 그 자리에서 중단하고 다음 일일 작업에서 재시도(attempts 소모 없음). `GMAIL_USER`·`GMAIL_APP_PASSWORD` 중 하나라도 비면 발송하지 않고 대기열에만 쌓임(테스트도 이 경로 사용).
 
 **logs** — `id, at, actor`(관리자 이메일|system|public), `action`(예 `assignment.approve`), `target_id`, `detail jsonb`
 
@@ -262,9 +262,9 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 
 ---
 
-## 8. 메일 사양 (Resend)
+## 8. 메일 사양 (Gmail SMTP)
 
-공통: From = `from_name <from_email>`(인증 도메인), Reply-To = `reply_to`, 텍스트+간단 HTML. 치환자는 `{이름}` 형식 유지(템플릿 편집 호환).
+공통: From = `from_name <GMAIL_USER>`(Gmail 이 인증 계정으로 고정, 설정 `from_email` 미사용), Reply-To = `reply_to`, 텍스트+간단 HTML. 치환자는 `{이름}` 형식 유지(템플릿 편집 호환).
 
 | 템플릿 | 발송 시점 | 치환자 |
 |---|---|---|
@@ -393,7 +393,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 2. 미인수 자동 취소(R19)
 3. 대여 종료 → 회수중(R20) + alerts·accounts.alert 재생성(R22)
 4. 승인 대기 자동 배정(R14, 모든 「진행중」 프로그램)
-5. 메일 대기열 발송(일일 한도 고려, 실패 재시도)
+5. 메일 대기열 발송(Gmail SMTP, 일일 한도 고려, 실패 재시도. 한도 오류 시 중단·익일 재시도)
 6. 계정 통계 갱신(R25)
 7. 구독 만료 D-`account_expiry_alert_days` 계정 표시, 만료일 경과 계정 → 만료
 8. 관리자 일일 점검 메일(내용 §8)
@@ -426,12 +426,12 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 
 - 관리자 화면·Server Actions는 미들웨어에서 세션 + `admins` 검사. 미허용 이메일은 로그인 후 「권한 없음」.
 - DB 접근은 서버 전용 service role. RLS는 모든 테이블에서 anon·authenticated 거부(방어 계층).
-- 링크 서명 `APP_SECRET`, `CRON_SECRET`, `RESEND_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`는 Vercel 환경변수. 접속 링크·로그인 이메일은 서버 전용 테이블에만 두고 로그에 기록 금지. mail_queue 본문은 발송 완료 시 삭제.
+- 링크 서명 `APP_SECRET`, `CRON_SECRET`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY`는 Vercel 환경변수. 접속 링크·로그인 이메일은 서버 전용 테이블에만 두고 로그에 기록 금지. mail_queue 본문은 발송 완료 시 삭제.
 - 접속 링크 등록·수정과 메일 발송은 logs에 actor 포함 기록(링크 값 자체는 남기지 않음).
 - 개인정보: 수집 항목·목적·기간 고지, 동의 일시 기록, 파기 기능(R30). 로그에는 이름·배정ID 수준만.
 - 백업: Supabase Pro 일일 백업(권장) 또는 관리자 「전체 CSV 내보내기」 주 1회 수동(Free 사용 시).
 - 확인 필요 사항(구현 전 결정):
-  1) Resend 발신 도메인 — DNS 설정 가능한 도메인 확보(대학 도메인 하위 or 별도 도메인).
+  1) Gmail 발신 계정 — 발신에 쓸 Google 계정 확보 후 「Google 계정 → 보안 → 2단계 인증 → 앱 비밀번호」에서 16자리 앱 비밀번호 발급(도메인 인증 불필요).
   2) Supabase Free vs Pro — 6개월 운영이면 Pro 권장(일시정지·백업) (Opinion, High).
   3) Vercel Hobby 비상업 조건 적용 가능 여부 — 불가 시 Pro($20/월/사용자) 또는 대학 서버 Docker 배포.
   4) 팀 계정 통제권 — 관리자 계정(gnuxai.ac.kr)의 ChatGPT Team·Claude Team 좌석 관리 권한 확보.
@@ -444,10 +444,10 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 
 | 단계 | 산출물 | 완료 기준 |
 |---|---|---|
-| 0. 스캐폴딩 | `nextjs-init` 스킬로 프로젝트 생성, Supabase 프로젝트(서울)·Resend·Vercel 연결, `.env.example`, `CLAUDE.md`(§15) | 로컬 실행, Supabase 연결 확인, 빈 `/admin` Google 로그인 성공 |
+| 0. 스캐폴딩 | `nextjs-init` 스킬로 프로젝트 생성, Supabase 프로젝트(서울)·Gmail 앱 비밀번호·Vercel 연결, `.env.example`, `CLAUDE.md`(§15) | 로컬 실행, Supabase 연결 확인, 빈 `/admin` Google 로그인 성공 |
 | 1. 데이터·인증 | 마이그레이션 SQL(§4 전체, enum, 인덱스, 뷰), 시드 스크립트(§9), admins 미들웨어 | 시드 후 프로그램 24개·설정·템플릿 존재, 비허용 계정 차단 |
 | 2. 프로그램·계정 | `/admin/programs`, `/admin/accounts`(CSV 가져오기, 접속 링크 등록·수정) | 좌석 CSV 6건 가져오기 → 접속 링크 표시 → 미등록 좌석이 대시보드에 표시 |
-| 3. 신청·승인·배정·메일 | 공개 API 2종(CORS), `signup-snippet.html` 연결 수정, 승인/자동 배정/메일 대기열/Resend 발송, `/admin/assignments` | GitHub Pages(또는 로컬 HTML)에서 신청 → 관리자 승인 → 계정 배정 → 실제 메일 수신(계정명·접속 링크 포함) |
+| 3. 신청·승인·배정·메일 | 공개 API 2종(CORS), `signup-snippet.html` 연결 수정, 승인/자동 배정/메일 대기열/Gmail SMTP 발송, `/admin/assignments` | GitHub Pages(또는 로컬 HTML)에서 신청 → 관리자 승인 → 계정 배정 → 실제 메일 수신(계정명·접속 링크 포함) |
 | 4. 인수·만료·회수 | `/ack`, 미인수 취소, 종료 → 회수중, alerts, 체크리스트·회수 완료·재배정, `/api/cron/daily` | 시나리오 T1~T6(§16) 통과 |
 | 5. 장애·실적·스냅샷·파기 | `/incident`, 대체 배정, 정지율, 실적 뷰·화면·CSV, `/api/cron/monthly`, 개인정보 파기, 로그 화면 | 시나리오 T7~T10 통과, 스냅샷 메일 수신 |
 | 6. 배포·이관·시범운영 | Vercel 배포·Cron 등록·환경변수, 기존 시트 데이터(있을 경우) CSV 이관, 시범 프로그램 1개·테스트 계정 2~3개 전 과정 실행 | 시범 운영 체크리스트 전 항목 완료, 구축가이드(운영 매뉴얼) 갱신 |
@@ -459,7 +459,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 ```
 # 프로젝트: AI 유료계정 관리시스템 (GNU AI융합원)
 - 사양: docs/PRD.md 가 단일 진실. 규칙 번호(R1~R33)를 커밋 메시지·주석에 인용.
-- 스택: Next.js App Router + TS + Tailwind + shadcn/ui, Supabase(service role, 서버 전용), Resend, Vercel Cron.
+- 스택: Next.js App Router + TS + Tailwind + shadcn/ui, Supabase(service role, 서버 전용), Gmail SMTP(nodemailer), Vercel Cron.
 - 시간대: 모든 날짜 계산은 Asia/Seoul. 유틸 lib/date.ts 의 todayKST() 만 사용.
 - DB 접근: lib/db.ts 의 서버 클라이언트만. 브라우저 번들에 Supabase 서비스 키 절대 포함 금지.
 - 상태 전이: lib/state.ts 의 transition() 을 통해서만 변경, 항상 logs 기록.
@@ -483,7 +483,7 @@ docs/ PRD.md, 운영매뉴얼.md
 public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 ```
 
-환경변수: `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Auth 전용), `RESEND_API_KEY`, `APP_SECRET`, `CRON_SECRET`, `INITIAL_ADMIN_EMAIL`.
+환경변수: `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Auth 전용), `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_SECRET`, `CRON_SECRET`, `INITIAL_ADMIN_EMAIL`.
 
 ---
 
@@ -506,7 +506,7 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 | T11 | 일일 작업 2회 연속 실행 | 2회째 변경 0건(멱등) |
 | T12 | 비허용 Google 계정 로그인 | `/admin` 접근 차단 |
 | T14 | 접속 링크 미등록 좌석 | 배정 풀·수동 배정·장애 대체에서 제외, 배정안내 메일 보류, 대시보드 「접속링크 미등록」 표시 |
-| T13 | 100건 배정 메일 일괄 | Resend 일일 한도 내 순차 발송, 초과분 다음 날 재시도, 상태 추적 |
+| T13 | 100건 배정 메일 일괄 | Gmail 일일 한도 내 순차 발송, 한도 오류 시 중단·초과분 다음 날 재시도(attempts 소모 없음), 상태 추적 |
 
 ---
 
@@ -540,3 +540,4 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 | 2026-09-17 | 프로그램 상태 「진행\|종료」 → 「시작전\|진행중\|완료」 3단계, 목록 드롭다운으로 즉시 전환. R4(자동 종료) 폐지, R3 을 상태별 표시 표로 개정. 마이그레이션 `0002_program_status.sql`(기존 기간 미설정 프로그램 → 시작전) | 관리자 요청 — 접수 개시·종료 시점을 담당자가 직접 통제 |
 | 2026-09-17 | 운영 모델을 **팀 계정(좌석 + 고정 접속 링크)** 으로 전환. 비밀번호 금고·생성·변경대기(R21·R23) 폐지, R14·R16·R20·R22·R24·R27 개정, 회수 체크리스트 5→2개(대화·메모리 삭제 / 팀에서 제거), 「등록이메일 소유」·「2FA」 필드 삭제, `VAULT_KEY` 제거. 마이그레이션 `0003_team_seat_access_url.sql` — **password_enc·new_password_enc 는 되돌릴 수 없이 삭제되므로 적용 전에 필요한 값을 옮겨 적을 것** | 관리자 결정 — gnuxai.ac.kr 팀 계정 좌석 운영으로 비밀번호 관리가 불필요해짐 |
 | 2026-09-17 | R3 재개정: 「진행중」이면 대여기간 입력 전에도 접수 가능(드롭다운 「접수중」). 기간 미설정 건은 배정만 보류 | 관리자 요청 — 상태를 진행중으로 바꾸면 곧바로 접수가 열려야 함 |
+| 2026-10-28 | 메일 발송을 Resend → Gmail SMTP(앱 비밀번호)로 교체. RESEND_API_KEY 폐지, GMAIL_USER·GMAIL_APP_PASSWORD 도입, from_email 미사용, DEFAULT_BATCH 200, 한도 오류 시 중단·익일 재시도 | 도메인 인증 없이 신청자에게 실제 메일을 보내기 위함(운영자 결정) |
