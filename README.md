@@ -96,8 +96,9 @@ cp docker/.env.docker.example docker/.env  # 키·비밀 값 입력
 npm test              # 도메인 로직 단위 테스트 (Vitest)
 npm run build         # 타입체크 + 프로덕션 빌드
 
-# 수용 기준 T1~T13 (PRD §16) — 실제 Supabase 연결 필요, 시범/스테이징에서만
-ACCEPTANCE_CONFIRM=yes npm run test:acceptance
+# 수용 기준 T1~T13 (PRD §16) — 실제 Supabase 연결 필요, 시범/스테이징에서만.
+# ACCEPTANCE_DB_HOST 에 시범 DB 호스트를 적어야 켜진다(운영 DB 오실행 방지). 테스트는 자기 좌석·프로그램 안에서만 배정한다.
+ACCEPTANCE_CONFIRM=yes ACCEPTANCE_DB_HOST=<시범프로젝트>.supabase.co npm run test:acceptance
 ```
 
 `supabase/migrations/0001_init.sql`~`0003_team_seat_access_url.sql` 은 PostgreSQL 16 에서 적용·재적용(멱등)과

@@ -2,10 +2,12 @@
  * 수용 기준 시나리오 T1~T13 (PRD §16) — 실제 Supabase 연결 통합 테스트.
  *
  * 실행:
- *   ACCEPTANCE_CONFIRM=yes npm run test:acceptance
+ *   ACCEPTANCE_CONFIRM=yes ACCEPTANCE_DB_HOST=<시범프로젝트>.supabase.co npm run test:acceptance
  *
  * 주의
  *  - 실제 DB에 쓰고 지운다. **반드시 시범/스테이징 프로젝트에서 실행할 것.**
+ *    ACCEPTANCE_DB_HOST 가 SUPABASE_URL 의 호스트와 같을 때만 켜진다 (integration-guard.ts).
+ *  - 자동 배정·재배정·일일 작업은 SCOPE(이 RUN 의 좌석·프로그램)로 제한한다. 운영 좌석을 잡지 않는다.
  *  - 필요한 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_SECRET
  *  - GMAIL_APP_PASSWORD 는 이 스위트 안에서 강제로 비운다. 메일은 대기열에만 쌓이고 실제로 나가지 않는다.
  *  - 모든 테스트 데이터는 `ZTEST` 접두를 쓰고 마지막에 삭제한다.
@@ -13,11 +15,9 @@
 import 'dotenv/config'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-const enabled =
-  process.env.ACCEPTANCE_CONFIRM === 'yes' &&
-  !!process.env.SUPABASE_URL &&
-  !!process.env.SUPABASE_SERVICE_ROLE_KEY &&
-  !!process.env.APP_SECRET
+import { acceptanceEnabled } from './integration-guard'
+
+const enabled = acceptanceEnabled()
 
 // 실제 발송 차단 (대기열까지만 확인한다)
 process.env.GMAIL_APP_PASSWORD = ''
@@ -30,6 +30,10 @@ const ACC_CL = `${RUN}-C1`
 const ACC_SPARE = `${RUN}-C9`
 const ACC_NOLINK = `${RUN}-G9` // 접속 링크 미등록 좌석 (배정 풀 제외 확인용)
 const mail = (n: number) => `${RUN.toLowerCase()}-${n}@example.test`
+
+// 격리(R12·R14): 자동 배정·재배정·일일 작업이 이 RUN 의 좌석·프로그램 안에서만 움직이게 한다.
+// 없으면 실제 운영 좌석(GPT-001…)이 테스트 신청에 배정되거나, 실제 대기자가 테스트 좌석을 받는다.
+const SCOPE = { accountIds: [ACC_GPT, ACC_CL, ACC_SPARE, ACC_NOLINK], programIds: [PROG_OPEN, PROG_NOPERIOD] }
 
 // 실제 모듈은 enabled 일 때만 불러온다(환경변수 없이 import 하면 db() 가 던진다).
 type Mods = {
@@ -132,7 +136,11 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     const asgIds = (asgs ?? []).map((a) => a.id)
     const userIds = [...new Set((asgs ?? []).map((a) => a.user_id))]
 
+    // 이 RUN 의 신청에 묶인 좌석은 (격리가 깨져 실제 좌석이 잡혔더라도) 모두 가용으로 되돌린다
     await db().from('accounts').update({ status: '가용', current_assignment_id: null }).like('id', `${RUN}%`)
+    if (asgIds.length > 0) {
+      await db().from('accounts').update({ status: '가용', current_assignment_id: null }).in('current_assignment_id', asgIds)
+    }
     await db().from('incidents').delete().like('account_id', `${RUN}%`)
     if (asgIds.length > 0) {
       await db().from('alerts').delete().in('assignment_id', asgIds)
@@ -160,7 +168,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(row?.status).toBe('신청')
     expect(row?.rent_start).toBeNull()
     // 기간이 없으므로 승인해도 배정되지 않고 「승인」에 머문다 (R14·R15)
-    const r = await M.assignments.approveAssignments([res.id], 'acceptance@test', today)
+    const r = await M.assignments.approveAssignments([res.id], 'acceptance@test', today, SCOPE)
     expect(r.assigned).toHaveLength(0)
     const { data: after } = await M.db.db().from('assignments').select('status').eq('id', res.id).single()
     expect(after?.status).toBe('승인')
@@ -224,7 +232,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     if (second.ok) ids.a2 = second.id
     if (third.ok) ids.a3 = third.id
 
-    const result = await M.assignments.approveAssignments([ids.a1, ids.a2, ids.a3], 'acceptance@test', today)
+    const result = await M.assignments.approveAssignments([ids.a1, ids.a2, ids.a3], 'acceptance@test', today, SCOPE)
     expect(result.approved).toBe(3)
     expect(result.assigned).toHaveLength(2)
 
@@ -258,7 +266,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
   })
 
   it('T5 — 사용중 건은 일일 작업에서 자동 취소되지 않고 경고도 없다 (미인수 자동 취소 R19 폐지)', async () => {
-    await M.daily.runDaily('acceptance@test', today)
+    await M.daily.runDaily('acceptance@test', today, SCOPE)
 
     const { data: asg } = await M.db.db().from('assignments').select('status').eq('id', ids.a2).single()
     expect(asg?.status).toBe('사용중')
@@ -281,11 +289,11 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(acc1?.status).toBe('회수중')
 
     // 체크 2개를 다 채우기 전에는 회수 완료가 막힌다
-    await expect(M.assignments.completeReturn(ids.a1, 'acceptance@test', today)).rejects.toThrow()
+    await expect(M.assignments.completeReturn(ids.a1, 'acceptance@test', today, SCOPE)).rejects.toThrow()
     await M.assignments.setChecklist(ids.a1, 'chk_delete_chats', true, 'acceptance@test')
-    await expect(M.assignments.completeReturn(ids.a1, 'acceptance@test', today)).rejects.toThrow()
+    await expect(M.assignments.completeReturn(ids.a1, 'acceptance@test', today, SCOPE)).rejects.toThrow()
     await M.assignments.setChecklist(ids.a1, 'chk_team_removed', true, 'acceptance@test')
-    const { reassigned } = await M.assignments.completeReturn(ids.a1, 'acceptance@test', today)
+    const { reassigned } = await M.assignments.completeReturn(ids.a1, 'acceptance@test', today, SCOPE)
 
     const { data: done } = await M.db.db().from('assignments').select('status, returned_at').eq('id', ids.a1).single()
     expect(done?.status).toBe('회수완료')
@@ -311,7 +319,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     if (!applied.ok) return
     ids.a4 = applied.id
 
-    await M.assignments.approveAssignments([ids.a4], 'acceptance@test', today)
+    await M.assignments.approveAssignments([ids.a4], 'acceptance@test', today, SCOPE)
     const { data: before } = await M.db.db().from('assignments').select('status, account_id').eq('id', ids.a4).single()
     if (before?.status !== '사용중') return // 가용 Claude 가 없으면 이 시나리오는 건너뛴다
 
@@ -370,8 +378,8 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
   })
 
   it('T11 — 일일 작업을 두 번 실행해도 결과가 같다(멱등)', async () => {
-    const first = await M.daily.runDaily('acceptance@test', today)
-    const second = await M.daily.runDaily('acceptance@test', today)
+    const first = await M.daily.runDaily('acceptance@test', today, SCOPE)
+    const second = await M.daily.runDaily('acceptance@test', today, SCOPE)
 
     expect(second.rent_ended).toHaveLength(0)
     expect(second.alerts).toBe(first.alerts)
