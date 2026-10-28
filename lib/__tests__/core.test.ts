@@ -304,3 +304,13 @@ describe('로그인 콜백 주소 (두 번 로그인 방지)', () => {
     expect(appBase(h({}), 'https://c.example.kr/auth/callback', 'https://b.example.kr')).toBe('https://c.example.kr')
   })
 })
+
+describe('Google 계정 선택 생략 힌트', () => {
+  it('loginHint: 이메일 형식만 통과, 소문자', async () => {
+    const { loginHint } = await import('@/lib/redirect')
+    expect(loginHint(' Admin@Example.KR ')).toBe('admin@example.kr')
+    expect(loginHint('not-an-email')).toBeNull()
+    expect(loginHint('a@b.c"><script>')).toBeNull()
+    expect(loginHint(undefined)).toBeNull()
+  })
+})

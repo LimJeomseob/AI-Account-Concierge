@@ -31,3 +31,17 @@ export function safeNext(next: string | null | undefined): string {
   if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return DEFAULT_AFTER_LOGIN
   return next
 }
+
+/**
+ * Google 계정 선택 화면 생략용 힌트 쿠키 — 관리자로 로그인에 성공한 이메일만 저장한다.
+ * 브라우저에 Google 계정이 여러 개 로그인돼 있으면 Google 이 계정 선택 화면을 띄우는데,
+ * login_hint 를 주면 해당 세션을 바로 고른다.
+ */
+export const LOGIN_HINT_COOKIE = 'ai-account-login-hint'
+export const LOGIN_HINT_MAX_AGE = 60 * 60 * 24 * 180
+
+/** 힌트 값 검증 — 이메일 형식만 통과 (순수 함수) */
+export function loginHint(value: string | null | undefined): string | null {
+  const v = (value ?? '').trim().toLowerCase()
+  return /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(v) && v.length <= 254 ? v : null
+}

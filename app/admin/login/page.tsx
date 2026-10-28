@@ -1,7 +1,8 @@
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import LoginButton from './LoginButton'
 import { isAdmin, sessionEmail } from '@/lib/auth'
-import { DEFAULT_AFTER_LOGIN } from '@/lib/redirect'
+import { DEFAULT_AFTER_LOGIN, LOGIN_HINT_COOKIE, loginHint } from '@/lib/redirect'
 import { Card } from '@/components/ui'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
@@ -27,6 +28,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     const email = await sessionEmail()
     if (email) redirect((await isAdmin(email)) ? DEFAULT_AFTER_LOGIN : '/admin/denied')
   }
+  const hint = loginHint((await cookies()).get(LOGIN_HINT_COOKIE)?.value)
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
@@ -40,7 +42,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 {describeError(error)}
               </p>
             )}
-            <LoginButton />
+            <LoginButton hint={hint} />
           </div>
         </Card>
       </main>
