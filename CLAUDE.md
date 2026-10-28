@@ -60,6 +60,6 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | R29 실적·스냅샷 | `lib/report.ts`, `lib/cron/monthly.ts`, 뷰 `v_report_*`(0005: 사람 단위·취소 제외) |
 | R30 개인정보 파기 | 화면 기능 없음(2026-10-28 제거) — `docs/운영매뉴얼.md` §8 SQL 절차 |
 | R31 로그 | `lib/state.ts:log` |
-| R32 멱등 일일 작업 | `lib/cron/daily.ts`(단계별 오류 수집·점검 메일 보고), `lib/lock.ts`(실행 잠금·마지막 성공 시각), `app/api/health`(`?strict=1` 외부 감시) |
+| R32 멱등 일일 작업 | `lib/cron/daily.ts`(단계별 오류 수집), `lib/lock.ts`(실행 잠금·마지막 성공 시각), `app/api/health`(`?strict=1` 외부 감시) |
 | R33 Asia/Seoul | `lib/date.ts` |
 | 유료계정 지원현황(계약 ChatGPT 45 · Claude 71) | 설정 `contract_gpt`·`contract_claude`, `lib/report.ts:supportStatus`, 대시보드 카드 |

@@ -6,7 +6,7 @@ import { Badge, Button, Card, Table, Td } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 import { CHECKLIST_FIELDS, L } from '@/lib/labels'
 import { applicantEmails, exportQuery } from '@/lib/ops/export'
-import { incidentUrl } from '@/lib/token'
+import { hasSecret, tryIncidentUrl } from '@/lib/token'
 import { approveAction, cancelAction, checklistAction, completeReturnAction } from '@/app/admin/actions'
 import AssignExportButton from './AssignExportButton'
 
@@ -31,7 +31,7 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   if (program) query = query.eq('program_id', program)
   if (q) query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,id.ilike.%${q}%`)
 
-  const { data: rows } = await query
+  const { data: rows, error: rowsError } = await query
   const { data: programs } = await db().from('programs').select('id, name').order('id')
 
   // 안내문의 장애 신고 링크(R26) — 신청자 자동 메일이 없으므로 안내문에 담아 직접 전달한다
@@ -48,12 +48,26 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
     for (const x of secs ?? []) loginEmails.set(x.account_id, x.login_email)
   }
 
+  // APP_SECRET 이 없으면 장애 신고 링크를 만들 수 없다 — 예외로 페이지 전체가 깨지지 않게 경고만 띄운다
+  const secretMissing = !hasSecret()
+
   return (
     <>
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-[var(--gnu-navy)]">{L.menu.assignments}</h1>
         <p className="text-sm text-slate-500">{rows?.length ?? 0}건</p>
       </header>
+
+      {rowsError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          ⚠ 신청 목록을 불러오지 못했습니다: {rowsError.message}
+        </div>
+      )}
+      {secretMissing && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          ⚠ Vercel 환경변수 <code>APP_SECRET</code> 이 없어 안내문에 장애 신고 링크를 넣을 수 없습니다. 값을 등록하고 재배포해 주세요(<code>openssl rand -hex 32</code>).
+        </div>
+      )}
 
       <Card title="필터">
         <form className="flex flex-wrap items-end gap-3 text-sm">
@@ -138,7 +152,7 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
 계정번호: ${r.account_id} (${r.service})
 팀 워크스페이스 초대 메일(${r.email})을 확인해 주세요.
 대여기간: ${r.rent_start ?? '-'} ~ ${r.rent_end ?? '-'}
-장애 신고(정지·로그인 불가): ${incidentUrl(appUrl, r.id)}`}
+장애 신고(정지·로그인 불가): ${tryIncidentUrl(appUrl, r.id) ?? '(APP_SECRET 미설정 — 담당자에게 문의)'}`}
                   label="안내문 복사"
                 />
               </div>

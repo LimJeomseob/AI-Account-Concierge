@@ -1,27 +1,19 @@
 /** Google 로그인 콜백 — 코드를 세션 쿠키로 교환 */
 import { NextResponse } from 'next/server'
 import { authClient } from '@/lib/auth'
+import { appBase as resolveBase, safeNext } from '@/lib/redirect'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * 리다이렉트 기준 주소.
- * 컨테이너 안에서는 요청 URL 의 호스트가 0.0.0.0 으로 잡힐 수 있어
- * (ERR_ADDRESS_INVALID) 브라우저가 실제로 쓰는 주소를 쓴다.
- */
+/** 로그인을 시작한 주소로 돌아간다 — 세션 쿠키가 그 주소에 저장되므로(lib/redirect.ts) */
 function appBase(req: Request): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL
-  if (configured) return configured.replace(/\/$/, '')
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host')
-  const proto = req.headers.get('x-forwarded-proto') ?? 'http'
-  if (host && !host.startsWith('0.0.0.0')) return `${proto}://${host}`
-  return new URL(req.url).origin
+  return resolveBase(req.headers, req.url, process.env.NEXT_PUBLIC_APP_URL)
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
-  const next = url.searchParams.get('next') ?? '/admin'
+  const next = safeNext(url.searchParams.get('next'))
   const base = appBase(req)
 
   // Supabase 가 오류를 붙여 돌려보낸 경우 (예: 공급자 설정 오류, 사용자 취소)

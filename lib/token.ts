@@ -18,8 +18,18 @@ export function sign(message: string, key: string = secret()): string {
   return createHmac('sha256', key).update(message).digest('hex').slice(0, 24)
 }
 
-export function verify(message: string, token: string | null | undefined, key: string = secret()): boolean {
+/** APP_SECRET 이 설정돼 있는가 — 없으면 링크를 만들거나 검증할 수 없다 */
+export function hasSecret(): boolean {
+  return !!process.env.APP_SECRET
+}
+
+export function verify(message: string, token: string | null | undefined, key?: string): boolean {
   if (!token) return false
+  // 비밀 값이 없으면 예외 대신 「검증 실패」 — 공개 페이지가 서버 오류로 깨지지 않게
+  if (key === undefined) {
+    if (!hasSecret()) return false
+    key = secret()
+  }
   const a = Buffer.from(sign(message, key))
   const b = Buffer.from(token)
   // 바이트 길이로 비교 — 문자 수가 같아도 멀티바이트가 섞이면 바이트 길이가 달라 timingSafeEqual 이 예외를 던진다
@@ -33,4 +43,9 @@ export const verifyIncidentToken = (assignmentId: string, token?: string | null)
 
 export function incidentUrl(base: string, assignmentId: string): string {
   return `${base.replace(/\/$/, '')}/incident?id=${encodeURIComponent(assignmentId)}&t=${incidentToken(assignmentId)}`
+}
+
+/** APP_SECRET 이 없으면 null — 관리자 화면이 서버 오류로 깨지지 않게(신청·배정 「안내문 복사」) */
+export function tryIncidentUrl(base: string, assignmentId: string): string | null {
+  return hasSecret() ? incidentUrl(base, assignmentId) : null
 }

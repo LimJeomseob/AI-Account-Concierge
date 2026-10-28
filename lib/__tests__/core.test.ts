@@ -272,3 +272,35 @@ describe('유료계정 지원현황', () => {
     expect(claude).toMatchObject({ label: 'Claude Team', contract: 71, registered: 2, returning: 1, available: 1 })
   })
 })
+
+describe('APP_SECRET 미설정 방어 (신청·배정 화면 서버 오류)', () => {
+  it('비밀 값이 없으면 tryIncidentUrl 은 null, verify 는 false (예외 없음)', async () => {
+    const { tryIncidentUrl, verify: v } = await import('@/lib/token')
+    const saved = process.env.APP_SECRET
+    delete process.env.APP_SECRET
+    try {
+      expect(tryIncidentUrl('https://x.test', 'A-1')).toBeNull()
+      expect(v('msg', 'deadbeef')).toBe(false)
+    } finally {
+      process.env.APP_SECRET = saved
+    }
+    expect(tryIncidentUrl('https://x.test', 'A-1')).toMatch(/^https:\/\/x\.test\/incident\?/)
+  })
+})
+
+describe('로그인 콜백 주소 (두 번 로그인 방지)', () => {
+  const h = (m: Record<string, string>) => ({ get: (k: string) => m[k] ?? null })
+  it('safeNext: 내부 경로만 허용', async () => {
+    const { safeNext } = await import('@/lib/redirect')
+    expect(safeNext('/admin/assignments')).toBe('/admin/assignments')
+    expect(safeNext('//evil.com')).toBe('/admin/dashboard')
+    expect(safeNext('https://evil.com')).toBe('/admin/dashboard')
+    expect(safeNext('/\\evil.com')).toBe('/admin/dashboard')
+    expect(safeNext(null)).toBe('/admin/dashboard')
+  })
+  it('appBase: 요청이 들어온 주소를 NEXT_PUBLIC_APP_URL 보다 먼저 쓴다', async () => {
+    const { appBase } = await import('@/lib/redirect')
+    expect(appBase(h({ 'x-forwarded-host': 'a.example.kr', 'x-forwarded-proto': 'https' }), 'http://localhost/x', 'https://b.example.kr')).toBe('https://a.example.kr')
+    expect(appBase(h({}), 'https://c.example.kr/auth/callback', 'https://b.example.kr')).toBe('https://c.example.kr')
+  })
+})
