@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
 import { periodFor } from '@/lib/assign'
 import { nextAssignmentId } from '@/lib/ids'
-import { queueAdminMail, queueAssignmentMail } from '@/lib/mail/queue'
+import { queueAdminMail } from '@/lib/mail/queue'
 import { log, transitionAccount, transitionAssignment } from '@/lib/state'
 import { moveAccountToReturning } from '@/lib/ops/assignments'
 import type { IncidentType, Program } from '@/lib/types'
@@ -151,7 +151,8 @@ export async function replaceAccount(
     service_wish: old.service_wish,
     account_id: pick.id,
     service,
-    status: '배정',
+    status: '사용중', // 배정 즉시 사용 개시 (인수 확인 폐지)
+    acknowledged_at: new Date().toISOString(),
     applied_at: old.applied_at,
     edu_watched_at: old.edu_watched_at,
     approved_on: old.approved_on,
@@ -171,14 +172,6 @@ export async function replaceAccount(
     patch: { current_assignment_id: newId },
     detail: { incident_id: incidentId, from_assignment: old.id },
   })
-
-  const sent = await queueAssignmentMail(newId)
-  if (sent) {
-    await db()
-      .from('assignments')
-      .update({ notified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', newId)
-  }
 
   await db()
     .from('incidents')

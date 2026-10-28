@@ -10,13 +10,12 @@ import { rebuildAlerts, listAlerts } from '@/lib/alerts'
 import { dispatchQueue } from '@/lib/mail/dispatch'
 import { queueAdminMail } from '@/lib/mail/queue'
 import { log } from '@/lib/state'
-import { autoAssignAll, endExpiredRentals, expireUnacknowledged } from '@/lib/ops/assignments'
+import { autoAssignAll, endExpiredRentals } from '@/lib/ops/assignments'
 import { processExpiries, refreshAccountStats } from '@/lib/ops/accounts'
 import { suspensionRate } from '@/lib/ops/incidents'
 
 export interface DailyResult {
   today: string
-  ack_overdue: string[]
   rent_ended: string[]
   assigned: string[]
   alerts: number
@@ -34,8 +33,7 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
 
   // 1. (폐지) 프로그램 자동 종료 — 상태 전환은 관리자 드롭다운 수동 (구 R4)
 
-  // 2. 미인수 자동 취소 (R19)
-  const ackOverdue = await expireUnacknowledged(s.ack_due_days, today)
+  // 2. (폐지) 미인수 자동 취소 — 인수 확인 단계가 없어졌다 (구 R19, 2026-10-28)
 
   // 3. 대여 종료 → 회수중 (R20). 접근 차단은 관리자 회수 체크리스트(R24)
   const rentEnded = await endExpiredRentals(today)
@@ -60,7 +58,7 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
 
   // 8. 관리자 일일 점검 메일
   const rate = await suspensionRate()
-  const digest = await sendDigest({ today, ackOverdue, rentEnded, assigned, mail, soon, rate })
+  const digest = await sendDigest({ today, rentEnded, assigned, mail, soon, rate })
 
   // 점검 메일까지 당일 발송 (대기열에 남기지 않는다)
   if (digest > 0) {
@@ -72,7 +70,6 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
 
   const result: DailyResult = {
     today,
-    ack_overdue: ackOverdue,
     rent_ended: rentEnded,
     assigned,
     alerts: alertCount,
@@ -89,7 +86,6 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
 
 async function sendDigest(input: {
   today: string
-  ackOverdue: string[]
   rentEnded: string[]
   assigned: string[]
   mail: { sent: number; failed: number; remaining: number }
@@ -128,7 +124,6 @@ async function sendDigest(input: {
     `· 배정 대기(승인·미배정): ${waiting ?? 0}건`,
     `· 오늘 자동 배정: ${input.assigned.length}건`,
     `· 오늘 대여 종료(회수중 전환): ${input.rentEnded.length}건`,
-    `· 미인수 회수: ${input.ackOverdue.length}건`,
     `· 장애 미처리: ${openIncidents ?? 0}건`,
     `· 정지율: ${input.rate}%${input.rate > s.suspension_rate_warn ? ' ⚠ 업체 협의 필요' : ''}`,
     `· 메일 발송: 성공 ${input.mail.sent} / 실패 ${input.mail.failed} / 대기 ${input.mail.remaining}`,

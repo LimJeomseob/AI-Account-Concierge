@@ -1,5 +1,6 @@
 /**
- * 신청·승인·배정·인수·회수 운영 (PRD R13~R20, R24)
+ * 신청·승인·배정·회수 운영 (PRD R13~R17, R20, R24)
+ * 2026-10-28: 신청자 자동 메일(R16)·인수 확인(R18)·미인수 자동 취소(R19) 폐지 — 배정 즉시 「사용중」
  */
 import 'server-only'
 import { db } from '@/lib/db'
@@ -7,7 +8,6 @@ import { todayKST } from '@/lib/date'
 import { capRemaining, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
 import { getSettings } from '@/lib/settings'
 import { log, transitionAccount, transitionAssignment } from '@/lib/state'
-import { queueAssignmentMail } from '@/lib/mail/queue'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
 import type { Program, Service } from '@/lib/types'
 
@@ -89,7 +89,7 @@ export async function autoAssignProgram(
 
     const ok = await transitionAssignment({
       id: alloc.assignment_id,
-      to: '배정',
+      to: '사용중',
       actor,
       action: 'assignment.assign',
       expect: ['승인'],
@@ -99,6 +99,7 @@ export async function autoAssignProgram(
         assigned_on: today,
         rent_start: alloc.rent_start,
         rent_end: alloc.rent_end,
+        acknowledged_at: new Date().toISOString(), // 배정 즉시 사용 개시 (인수 확인 폐지)
       },
       detail: { account_id: alloc.account_id, service: alloc.service, period },
     })
@@ -111,13 +112,6 @@ export async function autoAssignProgram(
       continue
     }
 
-    const sent = await queueAssignmentMail(alloc.assignment_id)
-    if (sent) {
-      await db()
-        .from('assignments')
-        .update({ notified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', alloc.assignment_id)
-    }
     assigned.push(alloc.assignment_id)
   }
   return assigned
@@ -235,70 +229,6 @@ export async function moveAccountToReturning(
   }
 }
 
-/** R18: 인수 확인 */
-export type AckResult = 'ok' | 'already' | 'invalid-state' | 'not-found'
-
-export async function acknowledge(id: string, actor: string): Promise<AckResult> {
-  const { data: a } = await db()
-    .from('assignments')
-    .select('status, acknowledged_at')
-    .eq('id', id)
-    .maybeSingle()
-  if (!a) return 'not-found'
-  if (a.acknowledged_at) return 'already'
-  if (a.status !== '배정') return 'invalid-state'
-
-  await transitionAssignment({
-    id,
-    to: '사용중',
-    actor,
-    action: 'assignment.acknowledge',
-    expect: ['배정'],
-    patch: { acknowledged_at: new Date().toISOString() },
-  })
-  return 'ok'
-}
-
-/** R19: 미인수 자동 취소 (일일 작업 2단계) */
-export async function expireUnacknowledged(
-  ackDueDays: number,
-  today: string = todayKST(),
-): Promise<string[]> {
-  const cutoff = new Date()
-  cutoff.setUTCDate(cutoff.getUTCDate() - ackDueDays)
-
-  const { data: rows } = await db()
-    .from('assignments')
-    .select('id, account_id, notified_at')
-    .eq('status', '배정')
-    .not('notified_at', 'is', null)
-    .is('acknowledged_at', null)
-    .lte('notified_at', cutoff.toISOString())
-
-  const out: string[] = []
-  for (const r of rows ?? []) {
-    await transitionAssignment({
-      id: r.id,
-      to: '인수기한초과',
-      actor: 'system',
-      action: 'assignment.ack_overdue',
-      expect: ['배정'],
-      patch: { note: `인수기한(${ackDueDays}일) 초과로 자동 취소 — ${today}` },
-      detail: { notified_at: r.notified_at, ack_due_days: ackDueDays },
-    })
-    if (r.account_id) {
-      await moveAccountToReturning(r.account_id, r.id, 'system')
-      // R19: 미인수 건은 계정의 current_assignment_id 를 해제한다.
-      await db()
-        .from('accounts')
-        .update({ current_assignment_id: null, updated_at: new Date().toISOString() })
-        .eq('id', r.account_id)
-    }
-    out.push(r.id)
-  }
-  return out
-}
-
 /** R20: 대여 종료 → 회수중 (일일 작업 3단계) */
 export async function endExpiredRentals(today: string = todayKST()): Promise<string[]> {
   const { data: rows } = await db()
@@ -384,19 +314,6 @@ export async function completeReturn(
   return { reassigned }
 }
 
-/** 안내 메일 재발송 */
-export async function resendAssignmentMail(id: string, actor: string): Promise<boolean> {
-  const sent = await queueAssignmentMail(id)
-  if (sent) {
-    await db()
-      .from('assignments')
-      .update({ notified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', id)
-    await log(actor, 'assignment.mail.resend', id, {})
-  }
-  return sent
-}
-
 /** 관리자 수동 배정 (계정 지정) */
 export async function manualAssign(
   assignmentId: string,
@@ -434,7 +351,7 @@ export async function manualAssign(
 
   await transitionAssignment({
     id: assignmentId,
-    to: '배정',
+    to: '사용중',
     actor,
     action: 'assignment.assign.manual',
     expect: ['승인'],
@@ -444,14 +361,8 @@ export async function manualAssign(
       assigned_on: today,
       rent_start: period.start,
       rent_end: period.end,
+      acknowledged_at: new Date().toISOString(), // 배정 즉시 사용 개시 (인수 확인 폐지)
     },
     detail: { account_id: accountId },
   })
-  const sent = await queueAssignmentMail(assignmentId)
-  if (sent) {
-    await db()
-      .from('assignments')
-      .update({ notified_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', assignmentId)
-  }
 }

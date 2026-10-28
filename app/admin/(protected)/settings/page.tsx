@@ -1,15 +1,12 @@
 /** 설정 (PRD §7-2) */
 import { db } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
-import { extractPlaceholders } from '@/lib/mail/render'
-import { ASSIGNMENT_TEMPLATE, INTAKE_TEMPLATE } from '@/lib/mail/templates'
 import { Button, Card, Table, Td, inputClass } from '@/components/ui'
 import { L } from '@/lib/labels'
 import {
   adminAddAction,
   adminRemoveAction,
   settingsSaveAction,
-  templateSaveAction,
 } from '@/app/admin/actions'
 import TestMailForm from './TestMailForm'
 
@@ -18,9 +15,6 @@ export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   const s = await getSettings()
   const { data: admins } = await db().from('admins').select('*').order('email')
-  const { data: templates } = await db().from('mail_templates').select('*')
-  const tmap = new Map((templates ?? []).map((t) => [t.key, t]))
-  const defaults = [ASSIGNMENT_TEMPLATE, INTAKE_TEMPLATE]
 
   return (
     <>
@@ -28,7 +22,6 @@ export default async function SettingsPage() {
 
       <Card title="운영 설정">
         <form action={settingsSaveAction} className="grid gap-3 sm:grid-cols-3">
-          <Num name="ack_due_days" label="인수 확인 기한(일)" value={s.ack_due_days} />
           <Num name="account_expiry_alert_days" label="구독 만료 D-N 알림" value={s.account_expiry_alert_days} />
           <Num name="suspension_rate_warn" label="정지율 경고(%)" value={s.suspension_rate_warn} />
           <Num name="target_headcount" label="목표 연인원" value={s.target_headcount} />
@@ -58,27 +51,6 @@ export default async function SettingsPage() {
             <Button>설정 저장</Button>
           </div>
         </form>
-      </Card>
-
-      <Card title="메일 템플릿">
-        {defaults.map((d) => {
-          const t = tmap.get(d.key)
-          const subject = t?.subject ?? d.subject
-          const body = t?.body ?? d.body
-          return (
-            <form key={d.key} action={templateSaveAction} className="mb-6 space-y-2 border-b border-slate-100 pb-6">
-              <input type="hidden" name="key" value={d.key} />
-              <p className="text-sm font-medium">{d.key}</p>
-              <p className="text-xs text-slate-500">치환자: {d.placeholders}</p>
-              <input name="subject" defaultValue={subject} className={inputClass} />
-              <textarea name="body" rows={14} defaultValue={body} className={`${inputClass} font-mono text-xs`} />
-              <p className="text-xs text-slate-400">
-                현재 본문 사용 치환자: {extractPlaceholders(body).map((p) => `{${p}}`).join(' ')}
-              </p>
-              <Button>템플릿 저장</Button>
-            </form>
-          )
-        })}
       </Card>
 
       <Card title="관리자">

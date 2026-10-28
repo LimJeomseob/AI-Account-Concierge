@@ -7,8 +7,8 @@ import type { AccountStatus, AssignmentStatus } from '@/lib/types'
 
 export const ASSIGNMENT_TRANSITIONS: Record<AssignmentStatus, AssignmentStatus[]> = {
   신청: ['승인', '반려', '취소'],
-  승인: ['배정', '취소', '반려'],
-  배정: ['사용중', '인수기한초과', '회수중', '취소'],
+  승인: ['사용중', '배정', '취소', '반려'], // 배정 즉시 사용중 (인수 확인 단계 폐지, 2026-10-28). '배정' 은 구 데이터 호환용
+  배정: ['사용중', '인수기한초과', '회수중', '취소'], // 구 상태 — 신규 전이 없음
   사용중: ['회수중', '취소'],
   회수중: ['회수완료', '취소'],
   회수완료: [],

@@ -19,7 +19,7 @@ export default function LoginButton() {
     <button
       onClick={signIn}
       disabled={busy}
-      className="rounded-md bg-[var(--gnu-navy)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      className="w-full rounded-md bg-gnu-navy px-6 py-3 text-base font-semibold text-white transition hover:bg-gnu-navy-dark focus-visible:ring-2 focus-visible:ring-gnu-blue/40 disabled:opacity-50"
     >
       {busy ? '이동 중…' : 'Google 계정으로 로그인'}
     </button>

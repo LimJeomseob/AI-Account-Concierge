@@ -6,7 +6,6 @@ import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
 import { applyAvailability, periodFor } from '@/lib/assign'
 import { nextAssignmentId, nextUserId } from '@/lib/ids'
-import { queueIntakeMail } from '@/lib/mail/queue'
 import { log } from '@/lib/state'
 import type { Program, ServiceWish, UserType } from '@/lib/types'
 
@@ -100,7 +99,7 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     if (error) return { ok: false, msg: '신청자 정보 저장에 실패했습니다.' }
   }
 
-  // R11: 배정 1건 생성 + 접수안내 메일 대기열
+  // R11: 배정 1건 생성 (접수안내 메일은 2026-10-28 폐지 — 신청자 자동 메일 없음)
   const id = await nextAssignmentId()
   const { error: aErr } = await db().from('assignments').insert({
     id,
@@ -123,11 +122,6 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
   }
 
   await log('public', 'assignment.apply', id, { program_id: program.id, email })
-  try {
-    await queueIntakeMail(id)
-  } catch (e) {
-    await log('system', 'mail.intake.error', id, { message: (e as Error).message })
-  }
 
   return { ok: true, id, period: avail.period }
 }

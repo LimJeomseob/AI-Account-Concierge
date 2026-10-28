@@ -19,15 +19,13 @@ export default async function ApplyPage() {
   })
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <p className="text-sm text-slate-500">경상국립대학교 AI융합원</p>
-      <h1 className="mt-1 text-2xl font-bold text-[var(--gnu-navy)]">AI 유료계정 신청</h1>
+    <>
+      <h1 className="text-3xl font-bold">AI 유료계정 신청</h1>
       <ApplyForm
         programs={programs}
         eduUrl={s.edu_url}
         privacy={{ items: s.privacy_items, purpose: s.privacy_purpose, period: s.privacy_period }}
-        ackDueDays={s.ack_due_days}
       />
-    </main>
+    </>
   )
 }

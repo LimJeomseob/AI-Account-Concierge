@@ -15,12 +15,10 @@ export default function ApplyForm({
   programs,
   eduUrl,
   privacy,
-  ackDueDays,
 }: {
   programs: ProgramOption[]
   eduUrl: string
   privacy: { items: string; purpose: string; period: string }
-  ackDueDays: number
 }) {
   const [watched, setWatched] = useState(false)
   const [programId, setProgramId] = useState('')
@@ -88,8 +86,7 @@ export default function ApplyForm({
           대여기간: {done.period}
         </p>
         <p className="mt-3 text-sm text-slate-600">
-          안내 메일 수신 후 <strong>{ackDueDays}일 이내</strong> 인수 확인 링크를 눌러 주세요. 기한이 지나면
-          배정이 자동 취소되어 대기자에게 재배정됩니다.
+          관리자 승인·배정이 끝나면 담당자가 접속 링크를 직접 안내해 드립니다. 자동 안내 메일은 발송되지 않으니 접수번호를 꼭 보관해 주세요.
         </p>
         <button
           onClick={() => setDone(null)}
@@ -223,7 +220,7 @@ export default function ApplyForm({
           <input name="website" tabIndex={-1} autoComplete="off" className="absolute -left-[9999px]" />
 
           <p className="rounded-md bg-slate-100 p-3 text-xs leading-6 text-slate-600">
-            안내 메일 수신 후 <strong>{ackDueDays}일 이내</strong> 「인수 확인」 링크를 눌러야 배정이 유지됩니다.
+            승인·배정 결과와 접속 링크는 자동 메일이 아니라 담당자가 직접 안내합니다. 접수번호를 보관해 주세요.
           </p>
 
           {error && <p className="text-sm text-red-700">{error}</p>}

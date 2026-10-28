@@ -2,16 +2,9 @@
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import { Badge, Button, Card, Table, Td } from '@/components/ui'
+import CopyButton from '@/components/CopyButton'
 import { CHECKLIST_FIELDS, L } from '@/lib/labels'
-import {
-  ackAction,
-  approveAction,
-  cancelAction,
-  checklistAction,
-  completeReturnAction,
-  rejectAction,
-  resendMailAction,
-} from '@/app/admin/actions'
+import { approveAction, cancelAction, checklistAction, completeReturnAction, rejectAction } from '@/app/admin/actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +18,7 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   let query = db()
     .from('assignments')
     .select(
-      'id, name, email, program_id, service_wish, account_id, service, status, applied_at, approved_on, assigned_on, rent_start, rent_end, notified_at, acknowledged_at, note, chk_delete_chats, chk_team_removed, programs(name)',
+      'id, name, email, program_id, service_wish, account_id, service, status, applied_at, approved_on, assigned_on, rent_start, rent_end, acknowledged_at, note, chk_delete_chats, chk_team_removed, programs(name)',
     )
     .order('applied_at', { ascending: false })
     .limit(300)
@@ -36,6 +29,17 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
 
   const { data: rows } = await query
   const { data: programs } = await db().from('programs').select('id, name').order('id')
+
+  // 접속 링크는 자동 메일 대신 관리자가 화면에서 보고 직접 전달한다 (2026-10-28, R16 폐지)
+  const accountIds = [...new Set((rows ?? []).map((r) => r.account_id).filter((v): v is string => !!v))]
+  const links = new Map<string, { login_email: string | null; access_url: string | null }>()
+  if (accountIds.length > 0) {
+    const { data: secs } = await db()
+      .from('account_secrets')
+      .select('account_id, login_email, access_url')
+      .in('account_id', accountIds)
+    for (const x of secs ?? []) links.set(x.account_id, { login_email: x.login_email, access_url: x.access_url })
+  }
 
   return (
     <>
@@ -80,9 +84,9 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
       <Card title="일괄 처리">
         <form action={approveAction} className="space-y-2">
           <p className="text-xs text-slate-500">
-            아래 표에서 선택한 건을 승인합니다. 설정의 「승인 즉시 배정」이 켜져 있으면 자동 배정·메일 발송까지 진행됩니다.
+            아래 표에서 선택한 건을 승인합니다. 설정의 「승인 즉시 배정」이 켜져 있으면 바로 좌석이 배정되어 「사용중」이 됩니다. 신청자에게 자동 메일은 가지 않으므로 접속 링크를 복사해 직접 전달해 주세요.
           </p>
-          <ListTable rows={rows ?? []} />
+          <ListTable rows={rows ?? []} links={links} />
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <Button>선택 승인</Button>
             <Button variant="danger" formAction={rejectAction}>
@@ -101,23 +105,30 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
         .filter((r) => ['배정', '사용중', '회수중', '인수기한초과'].includes(r.status))
         .map((r) => (
           <Card key={r.id} title={`${r.id} · ${r.name} · ${r.status}`}>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-slate-600">
               {(r as unknown as { programs: { name: string } | null }).programs?.name} · 계정{' '}
-              {r.account_id ?? '-'} ({r.service ?? '-'}) · 대여 {r.rent_start ?? '-'} ~ {r.rent_end ?? '-'} · 인수{' '}
-              {r.acknowledged_at ? '완료' : '대기'}
+              {r.account_id ?? '-'} ({r.service ?? '-'}) · 대여 {r.rent_start ?? '-'} ~ {r.rent_end ?? '-'} · 사용 개시{' '}
+              {r.acknowledged_at ? r.acknowledged_at.slice(0, 10) : '-'}
             </p>
+            {r.account_id && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-gnu-sky/60 px-3 py-2 text-sm">
+                <span className="font-medium text-gnu-navy">신청자에게 전달할 정보</span>
+                <span>이메일 {r.email}</span>
+                <span>· 계정명 {links.get(r.account_id)?.login_email ?? '-'}</span>
+                <span className="break-all">· 접속 링크 {links.get(r.account_id)?.access_url ?? '(미등록)'}</span>
+                {links.get(r.account_id)?.access_url && (
+                  <CopyButton
+                    value={`[AI융합원] ${r.name}님 AI 유료계정 안내
+계정: ${r.account_id} (${r.service})
+접속 링크: ${links.get(r.account_id)?.access_url}
+대여기간: ${r.rent_start ?? '-'} ~ ${r.rent_end ?? '-'}`}
+                    label="안내문 복사"
+                  />
+                )}
+              </div>
+            )}
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {r.status === '배정' && !r.acknowledged_at && (
-                <form action={ackAction}>
-                  <input type="hidden" name="id" value={r.id} />
-                  <Button variant="ghost">인수 확인 처리</Button>
-                </form>
-              )}
-              <form action={resendMailAction}>
-                <input type="hidden" name="id" value={r.id} />
-                <Button variant="ghost">안내 메일 재발송</Button>
-              </form>
               <form action={cancelAction}>
                 <input type="hidden" name="id" value={r.id} />
                 <input
@@ -169,11 +180,15 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   )
 }
 
-function ListTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+function ListTable({
+  rows,
+  links,
+}: {
+  rows: Array<Record<string, unknown>>
+  links: Map<string, { login_email: string | null; access_url: string | null }>
+}) {
   return (
-    <Table
-      head={['선택', '접수번호', '프로그램', '이름', '이메일', '희망', '계정', '상태', '대여기간', '발송', '인수']}
-    >
+    <Table head={['선택', '접수번호', '프로그램', '이름', '이메일', '희망', '계정', '상태', '대여기간', '접속 링크']}>
       {rows.map((r) => {
         const row = r as {
           id: string
@@ -185,10 +200,9 @@ function ListTable({ rows }: { rows: Array<Record<string, unknown>> }) {
           status: string
           rent_start: string | null
           rent_end: string | null
-          notified_at: string | null
-          acknowledged_at: string | null
           programs: { name: string } | null
         }
+        const url = row.account_id ? links.get(row.account_id)?.access_url ?? null : null
         return (
           <tr key={row.id}>
             <Td>
@@ -206,8 +220,7 @@ function ListTable({ rows }: { rows: Array<Record<string, unknown>> }) {
             <Td className="text-xs">
               {row.rent_start ?? '-'} ~ {row.rent_end ?? '-'}
             </Td>
-            <Td className="text-xs">{row.notified_at ? '○' : '-'}</Td>
-            <Td className="text-xs">{row.acknowledged_at ? '○' : '-'}</Td>
+            <Td>{url ? <CopyButton value={url} label="링크 복사" /> : row.account_id ? <span className="text-red-700">미등록</span> : '-'}</Td>
           </tr>
         )
       })}

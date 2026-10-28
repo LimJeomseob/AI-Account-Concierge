@@ -6,7 +6,7 @@ import 'server-only'
 import { db } from '@/lib/db'
 import { diffDays, todayKST } from '@/lib/date'
 
-export type AlertCategory = '대여기간 만료' | '인수기한 초과'
+export type AlertCategory = '대여기간 만료' // '인수기한 초과' 는 2026-10-28 인수 확인 폐지로 제거
 
 export interface AlertRow {
   category: AlertCategory
@@ -29,7 +29,6 @@ export function alertText(input: {
   checklistDone: boolean
 }): string {
   if (input.checklistDone) return '회수 체크리스트 완료 — 회수 완료 처리 필요'
-  if (input.category === '인수기한 초과') return '⚠ 인수기한 초과 — 회수 필요'
   return `⚠ 대여기간 만료(${input.rentEnd ?? '-'}, D+${input.elapsedDays}) — 대화·메모리 삭제 후 팀에서 제거 필요`
 }
 
@@ -38,9 +37,9 @@ export async function rebuildAlerts(today: string = todayKST()): Promise<number>
   const { data: rows, error } = await db()
     .from('assignments')
     .select(
-      'id, name, status, account_id, rent_end, chk_delete_chats, chk_team_removed, notified_at, programs(name)',
+      'id, name, status, account_id, rent_end, chk_delete_chats, chk_team_removed, programs(name)',
     )
-    .in('status', ['회수중', '인수기한초과'])
+    .eq('status', '회수중')
   if (error) throw new Error(error.message)
 
   const accountIds = (rows ?? []).map((r) => r.account_id).filter((v): v is string => !!v)
@@ -57,7 +56,7 @@ export async function rebuildAlerts(today: string = todayKST()): Promise<number>
   const accountAlert = new Map<string, string>()
 
   for (const r of rows ?? []) {
-    const category: AlertCategory = r.status === '인수기한초과' ? '인수기한 초과' : '대여기간 만료'
+    const category: AlertCategory = '대여기간 만료'
     const elapsed = r.rent_end ? Math.max(0, diffDays(r.rent_end, today)) : 0
     const text = alertText({
       category,

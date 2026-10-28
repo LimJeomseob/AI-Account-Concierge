@@ -85,10 +85,9 @@ export default async function IncidentPage({ searchParams }: { searchParams: Sea
 
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-lg p-8">
-      <p className="text-sm text-slate-500">경상국립대학교 AI융합원</p>
-      <h1 className="mt-1 text-xl font-bold text-[var(--gnu-navy)]">{title}</h1>
-      <div className="mt-3">{children}</div>
-    </main>
+    <section className="mx-auto max-w-lg">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      <div className="mt-4">{children}</div>
+    </section>
   )
 }

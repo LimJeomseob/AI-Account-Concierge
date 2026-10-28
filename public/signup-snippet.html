@@ -6,20 +6,27 @@
      =========================================================================== -->
 <div id="gnu-ai-signup">
   <style>
-    #gnu-ai-signup { max-width: 720px; margin: 0 auto; font-family: '맑은 고딕', 'Malgun Gothic', system-ui, sans-serif; color: #0f172a; }
-    #gnu-ai-signup h3 { font-size: 18px; margin: 24px 0 8px; color: #0b2b5c; }
-    #gnu-ai-signup .step { border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; background: #fff; margin-bottom: 16px; }
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css');
+    #gnu-ai-signup { max-width: 720px; margin: 0 auto; font-family: 'Pretendard Variable', Pretendard, '맑은 고딕', 'Malgun Gothic', -apple-system, system-ui, sans-serif; font-size: 15px; line-height: 1.6; color: #20262c; }
+    #gnu-ai-signup h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 28px 0 10px; color: #0b2b5c; }
+    #gnu-ai-signup .step { border: 1px solid #e3e7ee; border-radius: 12px; padding: 20px; background: #fff; margin-bottom: 20px; }
     #gnu-ai-signup .step.disabled { opacity: .45; pointer-events: none; }
-    #gnu-ai-signup label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+    #gnu-ai-signup label { display: block; font-size: 14px; font-weight: 600; margin: 12px 0 4px; }
     #gnu-ai-signup input[type=text], #gnu-ai-signup input[type=email], #gnu-ai-signup select {
-      width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+      width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; font-family: inherit; color: inherit; background: #fff; }
+    #gnu-ai-signup input[type=text]:focus, #gnu-ai-signup input[type=email]:focus, #gnu-ai-signup select:focus {
+      outline: none; border-color: #0098d8; box-shadow: 0 0 0 3px rgba(0,152,216,.3); }
     #gnu-ai-signup .row { display: flex; gap: 12px; flex-wrap: wrap; }
     #gnu-ai-signup .row > div { flex: 1 1 220px; }
-    #gnu-ai-signup .btn { background: #0b2b5c; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
+    #gnu-ai-signup .btn { background: #0b2b5c; color: #fff; border: 0; border-radius: 6px; padding: 12px 20px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; transition: background .15s; }
+    #gnu-ai-signup .btn:hover { background: #081f44; }
+    #gnu-ai-signup .btn:focus-visible { outline: 2px solid #0098d8; outline-offset: 2px; }
+    #gnu-ai-signup .btn:disabled { opacity: .5; cursor: not-allowed; }
     #gnu-ai-signup .btn.secondary { background: #fff; color: #0b2b5c; border: 1px solid #0b2b5c; }
-    #gnu-ai-signup .notice { background: #f1f5f9; border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.6; color: #475569; }
-    #gnu-ai-signup .check { font-size: 13px; display: flex; gap: 6px; align-items: flex-start; margin-top: 8px; }
-    #gnu-ai-signup .msg { font-size: 13px; margin-top: 10px; }
+    #gnu-ai-signup .btn.secondary:hover { background: #e8f5fb; }
+    #gnu-ai-signup .notice { background: #e8f5fb; border-radius: 8px; padding: 14px; font-size: 14px; line-height: 1.6; color: #20262c; }
+    #gnu-ai-signup .check { font-size: 14px; display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-weight: 400; }
+    #gnu-ai-signup .msg { font-size: 14px; margin-top: 10px; }
     #gnu-ai-signup .msg.err { color: #b91c1c; }
     #gnu-ai-signup .modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
     #gnu-ai-signup .modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 420px; width: 90%; }
@@ -88,7 +95,7 @@
     <input type="text" id="gnu-website" name="website" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off" />
 
     <p class="notice" style="margin-top:16px">
-      안내 메일 수신 후 <strong>2일 이내</strong> 「인수 확인」 링크를 눌러야 배정이 유지됩니다.
+      승인·배정 결과와 접속 링크는 자동 메일이 아니라 담당자가 직접 안내합니다. 접수번호를 보관해 주세요.
       기한 내 확인이 없으면 자동 취소되어 대기자에게 재배정됩니다.
     </p>
 
@@ -230,7 +237,7 @@
           '<p style="font-size:14px;line-height:1.7;margin:0">' +
           '입력하신 이메일 <strong>' + email + '</strong> 로 계정과 접속 링크를 보내드릴 예정입니다.<br />' +
           '접수번호: <strong>' + d.id + '</strong><br />대여기간: ' + (d.period || '-') + '<br /><br />' +
-          '안내 메일 수신 후 <strong>2일 이내</strong> 인수 확인 링크를 눌러 주세요. 기한이 지나면 배정이 자동 취소됩니다.</p>'
+          '관리자 승인·배정이 끝나면 담당자가 접속 링크를 직접 안내해 드립니다. 자동 안내 메일은 발송되지 않으니 접수번호를 꼭 보관해 주세요.</p>'
         );
       })
       .catch(function () {

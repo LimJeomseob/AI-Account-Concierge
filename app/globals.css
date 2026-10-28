@@ -1,15 +1,51 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css');
 @import 'tailwindcss';
 
+/* gnu.ac.kr 톤의 디자인 토큰 — Tailwind v4 @theme 으로 bg-gnu-navy / text-gnu-blue 등 유틸리티 생성 */
+@theme {
+  --color-gnu-navy: #0b2b5c;
+  --color-gnu-navy-dark: #081f44;
+  --color-gnu-blue: #0098d8;
+  --color-gnu-sky: #e8f5fb;
+  --color-gnu-ink: #20262c;
+  --color-gnu-muted: #767676;
+  --color-gnu-line: #e3e7ee;
+}
+
 :root {
+  /* 기존 text-[var(--gnu-navy)] 사용처 호환 */
   --gnu-navy: #0b2b5c;
 }
 
 html,
 body {
-  font-family: '맑은 고딕', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family:
+    'Pretendard Variable', Pretendard, '맑은 고딕', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
 }
 
 body {
-  background: #f8fafc;
-  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.6;
+  background: #f5f7fa;
+  color: #20262c;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--color-gnu-navy);
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gnu-blue);
+  outline-offset: 2px;
+}
+
+table {
+  font-variant-numeric: tabular-nums;
 }

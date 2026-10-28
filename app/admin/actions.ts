@@ -14,14 +14,12 @@ import { getSettings, setSetting, type Settings } from '@/lib/settings'
 import { CHECKLIST_FIELDS, PROGRAM_STATUSES } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
 import {
-  acknowledge,
   approveAssignments,
   autoAssignAll,
   cancelAssignment,
   completeReturn,
   manualAssign,
   rejectAssignments,
-  resendAssignmentMail,
   setChecklist,
 } from '@/lib/ops/assignments'
 import { importAccounts, parseAccountCsv, setAccessUrl } from '@/lib/ops/accounts'
@@ -61,12 +59,6 @@ export async function cancelAction(fd: FormData) {
   revalidatePath('/admin/assignments')
 }
 
-export async function ackAction(fd: FormData) {
-  const actor = await requireAdminAction()
-  await acknowledge(str(fd, 'id'), actor)
-  revalidatePath('/admin/assignments')
-}
-
 export async function checklistAction(fd: FormData) {
   const actor = await requireAdminAction()
   const field = str(fd, 'field') as (typeof CHECKLIST_FIELDS)[number]
@@ -80,12 +72,6 @@ export async function completeReturnAction(fd: FormData) {
   revalidatePath('/admin/assignments')
   revalidatePath('/admin/accounts')
   revalidatePath('/admin/dashboard')
-}
-
-export async function resendMailAction(fd: FormData) {
-  const actor = await requireAdminAction()
-  await resendAssignmentMail(str(fd, 'id'), actor)
-  revalidatePath('/admin/assignments')
 }
 
 export async function manualAssignAction(fd: FormData) {
@@ -318,7 +304,6 @@ export async function purgeAction(fd: FormData) {
 export async function settingsSaveAction(fd: FormData) {
   const actor = await requireAdminAction()
   const numeric: Array<keyof Settings> = [
-    'ack_due_days',
     'account_expiry_alert_days',
     'suspension_rate_warn',
     'target_headcount',
@@ -353,20 +338,6 @@ export async function settingsSaveAction(fd: FormData) {
       .filter(Boolean),
   )
   await log(actor, 'settings.save', null, {})
-  revalidatePath('/admin/settings')
-}
-
-export async function templateSaveAction(fd: FormData) {
-  const actor = await requireAdminAction()
-  const key = str(fd, 'key')
-  const { error } = await db()
-    .from('mail_templates')
-    .upsert(
-      { key, subject: str(fd, 'subject'), body: str(fd, 'body'), updated_at: new Date().toISOString() },
-      { onConflict: 'key' },
-    )
-  if (error) throw new Error(error.message)
-  await log(actor, 'mail_template.save', key, {})
   revalidatePath('/admin/settings')
 }
 

@@ -80,7 +80,7 @@ export default async function AccountsPage() {
       <Card title="접속 링크 등록·수정">
         <p className="mb-3 text-xs text-slate-600">
           팀 콘솔에서 좌석마다 발급한 고정 접속 링크를 넣어 주세요. 링크가 없는 좌석은 배정 대상에서 제외되고
-          배정안내 메일도 보류됩니다.
+          관리자가 신청자에게 전달할 링크가 없습니다.
         </p>
         <div className="space-y-2">
           {(accounts ?? []).map((a) => (

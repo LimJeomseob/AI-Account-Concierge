@@ -7,7 +7,6 @@
  */
 
 export interface Settings {
-  ack_due_days: number
   account_expiry_alert_days: number
   suspension_rate_warn: number
   admin_emails: string[]
@@ -27,7 +26,6 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  ack_due_days: 2,
   account_expiry_alert_days: 14,
   suspension_rate_warn: 5,
   admin_emails: [],
