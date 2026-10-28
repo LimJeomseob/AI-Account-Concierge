@@ -17,35 +17,43 @@
   --gnu-navy: #0b2b5c;
 }
 
-html,
-body {
-  font-family:
-    'Pretendard Variable', Pretendard, '맑은 고딕', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
-}
+/*
+ * 기본 스타일은 반드시 @layer base 안에 둔다.
+ * Tailwind v4 는 유틸리티를 @layer utilities 에 넣으므로, 레이어 밖에 쓴 `a { color }` 같은
+ * 규칙은 명시도와 무관하게 `text-white` 등 유틸리티보다 항상 우선해 버린다
+ * (첫 화면 「신청하기」 링크 글자색이 본문색으로 보이던 원인).
+ */
+@layer base {
+  html,
+  body {
+    font-family:
+      'Pretendard Variable', Pretendard, '맑은 고딕', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
+  }
 
-body {
-  font-size: 15px;
-  line-height: 1.6;
-  background: #f5f7fa;
-  color: #20262c;
-}
+  body {
+    font-size: 15px;
+    line-height: 1.6;
+    background: #f5f7fa;
+    color: #20262c;
+  }
 
-h1,
-h2,
-h3 {
-  color: var(--color-gnu-navy);
-  letter-spacing: -0.01em;
-}
+  h1,
+  h2,
+  h3 {
+    color: var(--color-gnu-navy);
+    letter-spacing: -0.01em;
+  }
 
-a {
-  color: inherit;
-}
+  a {
+    color: inherit;
+  }
 
-:focus-visible {
-  outline: 2px solid var(--color-gnu-blue);
-  outline-offset: 2px;
-}
+  :focus-visible {
+    outline: 2px solid var(--color-gnu-blue);
+    outline-offset: 2px;
+  }
 
-table {
-  font-variant-numeric: tabular-nums;
+  table {
+    font-variant-numeric: tabular-nums;
+  }
 }

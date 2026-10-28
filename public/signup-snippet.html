@@ -65,7 +65,7 @@
       <div><label for="gnu-affil">소속 <span style="color:#b91c1c">*</span></label><input type="text" id="gnu-affil" /></div>
     </div>
     <div class="row">
-      <div><label for="gnu-email">이메일 <span style="color:#b91c1c">*</span></label><input type="email" id="gnu-email" placeholder="계정 정보를 받을 주소" /></div>
+      <div><label for="gnu-email">이메일 <span style="color:#b91c1c">*</span></label><input type="email" id="gnu-email" placeholder="담당자 안내를 받을 주소" /></div>
       <div><label for="gnu-phone">연락처</label><input type="text" id="gnu-phone" /></div>
     </div>
     <div class="row">
@@ -96,7 +96,6 @@
 
     <p class="notice" style="margin-top:16px">
       승인·배정 결과와 접속 링크는 자동 메일이 아니라 담당자가 직접 안내합니다. 접수번호를 보관해 주세요.
-      기한 내 확인이 없으면 자동 취소되어 대기자에게 재배정됩니다.
     </p>
 
     <div style="margin-top:16px"><button type="button" class="btn" id="gnu-submit">신청하기</button></div>
@@ -235,8 +234,8 @@
         popup(
           '<h3 style="margin:0 0 8px;color:#0b2b5c">신청이 접수되었습니다.</h3>' +
           '<p style="font-size:14px;line-height:1.7;margin:0">' +
-          '입력하신 이메일 <strong>' + email + '</strong> 로 계정과 접속 링크를 보내드릴 예정입니다.<br />' +
-          '접수번호: <strong>' + d.id + '</strong><br />대여기간: ' + (d.period || '-') + '<br /><br />' +
+          '접수번호: <strong>' + d.id + '</strong><br />대여기간: ' + (d.period || '-') + '<br />' +
+          '연락 이메일: <strong>' + email + '</strong><br /><br />' +
           '관리자 승인·배정이 끝나면 담당자가 접속 링크를 직접 안내해 드립니다. 자동 안내 메일은 발송되지 않으니 접수번호를 꼭 보관해 주세요.</p>'
         );
       })

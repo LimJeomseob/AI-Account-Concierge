@@ -13,13 +13,23 @@ import type { Program, Service } from '@/lib/types'
 
 const ACTIVE_OCCUPYING = ['배정', '사용중', '회수중', '회수완료'] as const
 
+/**
+ * 배정 범위 제한 — 통합 테스트 격리용. 운영 코드는 넘기지 않는다(= 전체).
+ * 자동 배정은 가용 좌석 전체에서 고르므로, 테스트가 만든 신청이 실제 운영 좌석을 잡거나
+ * 회수 후 재배정이 실제 프로그램 대기자에게 테스트 좌석을 주는 일을 막는다.
+ */
+export interface AssignScope {
+  /** 이 좌석들만 배정 풀에 넣는다 */
+  accountIds?: string[]
+  /** 이 프로그램들만 자동 배정 대상으로 본다 (autoAssignAll·completeReturn 재배정) */
+  programIds?: string[]
+}
+
 /** 배정 가능한 계정 풀 (가용 ∧ 운영 ∧ 접속 링크 등록) — R14-2 */
-export async function availablePool(): Promise<PoolAccount[]> {
-  const { data: accs, error } = await db()
-    .from('accounts')
-    .select('id, service, kind, expires_on')
-    .eq('status', '가용')
-    .eq('kind', '운영')
+export async function availablePool(scope?: AssignScope): Promise<PoolAccount[]> {
+  let q = db().from('accounts').select('id, service, kind, expires_on').eq('status', '가용').eq('kind', '운영')
+  if (scope?.accountIds) q = q.in('id', scope.accountIds)
+  const { data: accs, error } = await q
   if (error) throw new Error(error.message)
   const ids = (accs ?? []).map((a) => a.id)
   if (ids.length === 0) return []
@@ -40,7 +50,9 @@ export async function autoAssignProgram(
   programId: string,
   actor: string,
   today: string = todayKST(),
+  scope?: AssignScope,
 ): Promise<string[]> {
+  if (scope?.programIds && !scope.programIds.includes(programId)) return []
   const { data: program } = await db().from('programs').select('*').eq('id', programId).single()
   if (!program) return []
   const p = program as Program
@@ -68,7 +80,7 @@ export async function autoAssignProgram(
   const queue = (queueRows ?? []) as QueueItem[]
   if (queue.length === 0) return []
 
-  const pool = await availablePool()
+  const pool = await availablePool(scope)
   const plan = planAllocations({ period, queue, pool, capRemaining: left })
 
   const assigned: string[] = []
@@ -118,11 +130,13 @@ export async function autoAssignProgram(
 }
 
 /** 진행 중인 모든 프로그램에 대해 자동 배정 (일일 작업 4단계) */
-export async function autoAssignAll(actor: string, today: string = todayKST()): Promise<string[]> {
-  const { data: programs } = await db().from('programs').select('id').eq('status', '진행중')
+export async function autoAssignAll(actor: string, today: string = todayKST(), scope?: AssignScope): Promise<string[]> {
+  let q = db().from('programs').select('id').eq('status', '진행중')
+  if (scope?.programIds) q = q.in('id', scope.programIds)
+  const { data: programs } = await q
   const out: string[] = []
   for (const p of programs ?? []) {
-    out.push(...(await autoAssignProgram(p.id, actor, today)))
+    out.push(...(await autoAssignProgram(p.id, actor, today, scope)))
   }
   return out
 }
@@ -132,6 +146,7 @@ export async function approveAssignments(
   ids: string[],
   actor: string,
   today: string = todayKST(),
+  scope?: AssignScope,
 ): Promise<{ approved: number; assigned: string[] }> {
   const s = await getSettings()
   let approved = 0
@@ -156,7 +171,7 @@ export async function approveAssignments(
 
   const assigned: string[] = []
   if (s.auto_assign_on_approve) {
-    for (const pid of programIds) assigned.push(...(await autoAssignProgram(pid, actor, today)))
+    for (const pid of programIds) assigned.push(...(await autoAssignProgram(pid, actor, today, scope)))
   }
   return { approved, assigned }
 }
@@ -275,6 +290,7 @@ export async function completeReturn(
   id: string,
   actor: string,
   today: string = todayKST(),
+  scope?: AssignScope,
 ): Promise<{ reassigned: string[] }> {
   const { data: a } = await db()
     .from('assignments')
@@ -308,9 +324,11 @@ export async function completeReturn(
   }
 
   // 회수 즉시 재배정 (해당 프로그램 우선 → 나머지 진행 프로그램)
-  const reassigned = await autoAssignProgram(a.program_id, actor, today)
-  const { data: others } = await db().from('programs').select('id').eq('status', '진행중').neq('id', a.program_id)
-  for (const p of others ?? []) reassigned.push(...(await autoAssignProgram(p.id, actor, today)))
+  const reassigned = await autoAssignProgram(a.program_id, actor, today, scope)
+  let othersQ = db().from('programs').select('id').eq('status', '진행중').neq('id', a.program_id)
+  if (scope?.programIds) othersQ = othersQ.in('id', scope.programIds)
+  const { data: others } = await othersQ
+  for (const p of others ?? []) reassigned.push(...(await autoAssignProgram(p.id, actor, today, scope)))
   return { reassigned }
 }
 

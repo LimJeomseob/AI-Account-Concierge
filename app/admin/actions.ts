@@ -11,7 +11,7 @@ import { todayKST } from '@/lib/date'
 import { log } from '@/lib/state'
 import { nextProgramId } from '@/lib/ids'
 import { getSettings, setSetting, type Settings } from '@/lib/settings'
-import { CHECKLIST_FIELDS, PROGRAM_STATUSES } from '@/lib/labels'
+import { CHECKLIST_FIELDS, PROGRAM_STATUSES, PURGE_ALL_CONFIRM } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
 import {
   approveAssignments,
@@ -292,11 +292,26 @@ export async function runDailyAction() {
 
 // --- 사용자·개인정보 --------------------------------------------------------
 
-export async function purgeAction(fd: FormData) {
+/** R30: 선택한 사용자만 파기. 선택이 없으면 거부한다(과거엔 전체 파기로 떨어졌음). */
+export async function purgeAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
   const actor = await requireAdminAction()
   const targets = ids(fd)
-  await purgeUsers(targets.length > 0 ? targets : null, actor)
+  if (targets.length === 0) return { ok: false, msg: '파기할 사용자를 선택해 주세요. 전체 파기는 아래 별도 버튼을 사용합니다.' }
+  const n = await purgeUsers(targets, actor)
   revalidatePath('/admin/users')
+  return { ok: true, msg: `${n}명의 개인정보를 파기했습니다.` }
+}
+
+/** R30: 미파기 사용자 전체 파기 — 확인 문구(PURGE_ALL_CONFIRM)를 정확히 입력해야 실행된다 */
+export async function purgeAllAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
+  const actor = await requireAdminAction()
+  if (str(fd, 'confirm').trim() !== PURGE_ALL_CONFIRM) {
+    return { ok: false, msg: `확인란에 「${PURGE_ALL_CONFIRM}」 를 정확히 입력해야 실행됩니다.` }
+  }
+  const n = await purgeUsers(null, actor)
+  await log(actor, 'privacy.purge_all', null, { count: n })
+  revalidatePath('/admin/users')
+  return { ok: true, msg: `미파기 사용자 ${n}명 전체의 개인정보를 파기했습니다.` }
 }
 
 // --- 설정 -------------------------------------------------------------------

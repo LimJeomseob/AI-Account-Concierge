@@ -10,7 +10,7 @@ import { rebuildAlerts, listAlerts } from '@/lib/alerts'
 import { dispatchQueue } from '@/lib/mail/dispatch'
 import { queueAdminMail } from '@/lib/mail/queue'
 import { log } from '@/lib/state'
-import { autoAssignAll, endExpiredRentals } from '@/lib/ops/assignments'
+import { autoAssignAll, endExpiredRentals, type AssignScope } from '@/lib/ops/assignments'
 import { processExpiries, refreshAccountStats } from '@/lib/ops/accounts'
 import { suspensionRate } from '@/lib/ops/incidents'
 
@@ -27,7 +27,8 @@ export interface DailyResult {
   digest_recipients: number
 }
 
-export async function runDaily(actor = 'system', today: string = todayKST()): Promise<DailyResult> {
+/** `scope` 는 통합 테스트 격리용(자동 배정 범위 제한). 운영 호출은 넘기지 않는다. */
+export async function runDaily(actor = 'system', today: string = todayKST(), scope?: AssignScope): Promise<DailyResult> {
   const s = await getSettings()
   await log(actor, 'cron.daily.start', null, { today })
 
@@ -42,7 +43,7 @@ export async function runDaily(actor = 'system', today: string = todayKST()): Pr
   const alertCount = await rebuildAlerts(today)
 
   // 4. 승인 대기 자동 배정 (R14)
-  const assigned = await autoAssignAll(actor, today)
+  const assigned = await autoAssignAll(actor, today, scope)
 
   // 4-1. 배정으로 알림 대상이 바뀌었을 수 있으므로 다시 계산
   await rebuildAlerts(today)

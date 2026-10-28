@@ -12,7 +12,8 @@ export type AssignmentStatus =
   | '신청' | '승인' | '배정' | '사용중' | '회수중' | '회수완료' | '반려' | '취소' | '인수기한초과'
 export type IncidentType = '정지' | '로그인불가' | '기타'
 export type IncidentStatus = '접수' | '처리중' | '완료'
-export type MailKind = 'assignment' | 'intake' | 'digest' | 'incident' | 'snapshot'
+/** 관리자 메일만 남는다(점검·장애·스냅샷). DB enum 의 'assignment'·'intake' 는 폐지된 신청자 메일(R11·R16) 흔적 */
+export type MailKind = 'digest' | 'incident' | 'snapshot'
 export type MailStatus = 'pending' | 'sent' | 'failed'
 
 export interface Program {

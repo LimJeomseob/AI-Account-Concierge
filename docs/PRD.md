@@ -489,7 +489,7 @@ public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 
 ## 16. 테스트 시나리오 (수용 기준)
 
-실행: `ACCEPTANCE_CONFIRM=yes npm run test:acceptance` (시범/스테이징 DB). `lib/__tests__/acceptance.integration.test.ts` 가 T1~T13 을, `lib/__tests__/lifecycle.integration.test.ts` 가 신청자 1명의 생애주기(신청→접수→배정→인수→종료→회수→재배정)를 단계별 보고서로 검수한다(`SIM_EMAIL` 로 신청자 지정).
+실행: `ACCEPTANCE_CONFIRM=yes ACCEPTANCE_DB_HOST=<시범 DB 호스트> npm run test:acceptance` (시범/스테이징 DB 전용 — 호스트가 `SUPABASE_URL` 과 일치해야 켜진다. 테스트는 자기 좌석·프로그램 안에서만 배정한다). `lib/__tests__/acceptance.integration.test.ts` 가 T1~T13 을, `lib/__tests__/lifecycle.integration.test.ts` 가 신청자 1명의 생애주기(신청→접수→배정→인수→종료→회수→재배정)를 단계별 보고서로 검수한다(`SIM_EMAIL` 로 신청자 지정).
 
 | # | 시나리오 | 기대 결과 |
 |---|---|---|
