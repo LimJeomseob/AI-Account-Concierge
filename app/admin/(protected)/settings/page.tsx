@@ -24,6 +24,8 @@ export default async function SettingsPage() {
       <Card title="운영 설정">
         <form action={settingsSaveAction} className="grid gap-3 sm:grid-cols-3">
           <Num name="target_headcount" label="목표 연인원" value={s.target_headcount} />
+          <Num name="contract_gpt" label="계약 계정 수 — ChatGPT Business Standard" value={s.contract_gpt} />
+          <Num name="contract_claude" label="계약 계정 수 — Claude Team" value={s.contract_claude} />
           <Txt name="program_id_prefix" label="프로그램ID 접두" value={s.program_id_prefix} />
           <Txt name="from_name" label="발신자 표시명" value={s.from_name} />
           <Txt name="from_email" label="발신 주소 (미사용 — Gmail 발송은 GMAIL_USER 로 고정)" value={s.from_email} />
@@ -41,10 +43,6 @@ export default async function SettingsPage() {
           <label className="text-sm sm:col-span-3">
             <span className="text-xs text-slate-600">CORS 허용 오리진 (신청 페이지 주소)</span>
             <textarea name="signup_origins" rows={2} defaultValue={s.signup_origins.join('\n')} className={inputClass} />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="auto_assign_on_approve" defaultChecked={s.auto_assign_on_approve} />
-            <span className="text-xs text-slate-600">승인 즉시 배정·발송</span>
           </label>
           <div className="sm:col-span-3">
             <Button>설정 저장</Button>

@@ -4,15 +4,15 @@ import { renderTemplate, extractPlaceholders, textToHtml } from '@/lib/mail/rend
 import { formatAccountId, formatAssignmentId, formatProgramId, formatUserId } from '@/lib/ids'
 import { alertText } from '@/lib/alerts'
 import { canTransitionAccount, canTransitionAssignment } from '@/lib/state'
-import { toCsv } from '@/lib/report'
-import { applicantCsv, applicantEmails, exportQuery } from '@/lib/ops/export'
+import { supportStatus, toCsv } from '@/lib/report'
+import { applicantCsv, applicantEmails, assignExportMessage, assignedCsv, exportQuery } from '@/lib/ops/export'
 import { acceptanceEnabled } from './integration-guard'
 import { classifyMailError } from '@/lib/mail/dispatch'
 import { assignedDaysOf } from '@/lib/assign'
 import { accountStatusOptions, canManuallySetAccount } from '@/lib/transitions'
 import { incidentToken, verifyIncidentToken } from '@/lib/token'
 import { sign, verify } from '@/lib/token'
-import { normalizeUrl, parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
+import { parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
 
 beforeAll(() => {
   process.env.APP_SECRET = 'test-secret'
@@ -115,7 +115,7 @@ describe('계정 CSV 파싱 (§7-2)', () => {
   it('헤더 순서와 무관하게 읽고 날짜를 정규화한다', () => {
     const rows = parseAccountCsv(
       [
-        '계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일',
+        '계정번호,서비스,구분,로그인이메일,접속링크,활성화일,만료일',
         'GPT-001,GPT,운영,a@b.ac.kr,https://t.example/g1,2026.09.01,2027-03-31',
         'CL-001,Claude,예비,c@d.ac.kr,,,',
       ].join('\n'),
@@ -125,11 +125,18 @@ describe('계정 CSV 파싱 (§7-2)', () => {
       id: 'GPT-001',
       service: 'GPT',
       kind: '운영',
-      access_url: 'https://t.example/g1',
+      login_email: 'a@b.ac.kr',
       activated_on: '2026-09-01',
       expires_on: '2027-03-31',
     })
-    expect(rows[1]).toMatchObject({ service: 'Claude', kind: '예비', access_url: '' })
+    expect(rows[1]).toMatchObject({ service: 'Claude', kind: '예비' })
+    expect(rows[0]).not.toHaveProperty('access_url') // 접속링크 열은 무시(R14-2 폐지)
+  })
+
+  it('예전 헤더 「계정ID」도 읽고, 로그인이메일 열이 없으면 건드리지 않는다', () => {
+    const rows = parseAccountCsv(['계정ID,서비스', 'CL-071,Claude'].join('\n'))
+    expect(rows[0]).toMatchObject({ id: 'CL-071', service: 'Claude', kind: '운영' })
+    expect(rows[0].login_email).toBeUndefined()
   })
 
   it('따옴표 안의 쉼표를 지킨다', () => {
@@ -137,17 +144,6 @@ describe('계정 CSV 파싱 (§7-2)', () => {
   })
 })
 
-describe('접속 링크 정규화 (R14-2)', () => {
-  it('빈 값·공백은 미등록(null)', () => {
-    expect(normalizeUrl('')).toBeNull()
-    expect(normalizeUrl('   ')).toBeNull()
-    expect(normalizeUrl(undefined)).toBeNull()
-  })
-  it('http(s) 만 허용하고 앞뒤 공백을 지운다', () => {
-    expect(normalizeUrl('  https://team.example/seat/1  ')).toBe('https://team.example/seat/1')
-    expect(() => normalizeUrl('team.example/seat/1')).toThrow()
-  })
-})
 
 describe('신청자 목록 내려받기 (R7·R30)', () => {
   const rows = [
@@ -233,5 +229,46 @@ describe('2단계 보완 (R24·R25·R33·R26)', () => {
     const t = incidentToken('A261028-0001')
     expect(verifyIncidentToken('A261028-0001', t)).toBe(true)
     expect(verifyIncidentToken('A261028-0001', '가'.repeat(t.length))).toBe(false)
+  })
+})
+
+describe('승인 건 배정 + 메일 내려받기 (R14, 2026-10-29)', () => {
+  it('CSV — BOM·이름·이메일·계정번호 3열', () => {
+    const csv = assignedCsv([
+      { name: '홍길동', email: 'hong@x.kr', account_id: 'GPT-001' },
+      { name: '김, 철수', email: 'kim@x.kr', account_id: 'CL-071' },
+    ])
+    const lines = csv.split('\n')
+    expect(lines[0]).toBe('﻿이름,이메일,계정번호')
+    expect(lines[1]).toBe('홍길동,hong@x.kr,GPT-001')
+    expect(lines[2]).toBe('"김, 철수",kim@x.kr,CL-071')
+  })
+  it('결과 안내 문구', () => {
+    expect(assignExportMessage(0, 0, 0)).toContain('배정할 「승인」 건이 없습니다')
+    const m = assignExportMessage(3, 1, 2)
+    expect(m).toContain('3명 배정')
+    expect(m).toContain('2명은 가용 계정이 없거나')
+    expect(m).toContain('1명은 프로그램이 진행중이 아니거나')
+  })
+  it('반려 전이 없음 (R17 폐지)', () => {
+    expect(canTransitionAssignment('신청', '반려')).toBe(false)
+    expect(canTransitionAssignment('승인', '반려')).toBe(false)
+    expect(canTransitionAssignment('신청', '승인')).toBe(true)
+  })
+})
+
+describe('유료계정 지원현황', () => {
+  it('서비스별 계약 대비 등록(만료 제외)·사용중·회수중·가용·정지', () => {
+    const accounts = [
+      { service: 'GPT', status: '배정' },
+      { service: 'GPT', status: '가용' },
+      { service: 'GPT', status: '정지' },
+      { service: 'GPT', status: '만료' },
+      { service: 'Claude', status: '회수중' },
+      { service: 'Claude', status: '가용' },
+    ]
+    const [gpt, claude] = supportStatus(accounts, { GPT: 45, Claude: 71 })
+    expect(gpt).toMatchObject({ label: 'ChatGPT Business Standard', contract: 45, registered: 3, inUse: 1, available: 1, suspended: 1 })
+    expect(claude).toMatchObject({ label: 'Claude Team', contract: 71, registered: 2, returning: 1, available: 1 })
   })
 })

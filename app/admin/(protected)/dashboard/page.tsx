@@ -1,14 +1,15 @@
 /** 대시보드 (PRD §7-2) */
 import Link from 'next/link'
 import { db } from '@/lib/db'
-import { addDays, nowKSTText, todayKST } from '@/lib/date'
+import { nowKSTText, todayKST } from '@/lib/date'
 import { lastOk } from '@/lib/lock'
 import type { DailyError } from '@/lib/cron/daily'
 import { getSettings } from '@/lib/settings'
 import { listAlerts } from '@/lib/alerts'
 import { suspensionRate } from '@/lib/ops/incidents'
 import { Badge, Button, Card, Stat, Table, Td } from '@/components/ui'
-import { runDailyAction, autoAssignAction } from '@/app/admin/actions'
+import { runDailyAction } from '@/app/admin/actions'
+import { supportStatus } from '@/lib/report'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,18 +32,9 @@ export default async function DashboardPage() {
   const mailPending = await countBy('mail_queue', 'status', ['pending'])
   const mailFailed = await countBy('mail_queue', 'status', ['failed'])
 
-  // 접속 링크가 없는 운영 좌석 — 배정 대상에서 빠지므로 눈에 띄어야 한다 (R14-2)
-  const { data: liveAccounts } = await db()
-    .from('accounts')
-    .select('id')
-    .eq('kind', '운영')
-    .neq('status', '만료')
-  const { data: linked } = await db()
-    .from('account_secrets')
-    .select('account_id')
-    .not('access_url', 'is', null)
-  const linkedIds = new Set((linked ?? []).map((s) => s.account_id))
-  const noLink = (liveAccounts ?? []).filter((a) => !linkedIds.has(a.id)).length
+  // 유료계정 지원현황 — 서비스별 계약 수 대비 등록·사용 (설정 contract_gpt·contract_claude)
+  const { data: accRows } = await db().from('accounts').select('service, status')
+  const support = supportStatus(accRows ?? [], { GPT: s.contract_gpt, Claude: s.contract_claude })
 
   const alerts = await listAlerts()
   const rate = await suspensionRate()
@@ -79,9 +71,6 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <form action={autoAssignAction}>
-            <Button variant="ghost">지금 자동 배정</Button>
-          </form>
           <form action={runDailyAction}>
             <Button>일일 작업 지금 실행</Button>
           </form>
@@ -114,12 +103,30 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <Card title="유료계정 지원현황">
+        <Table head={['서비스', '계약', '등록(만료 제외)', '사용중', '회수중', '가용', '정지']}>
+          {support.map((r) => (
+            <tr key={r.service}>
+              <Td>{r.label}</Td>
+              <Td className="font-semibold">{r.contract}</Td>
+              <Td className={r.registered !== r.contract ? 'font-semibold text-red-700' : ''}>
+                {r.registered}
+                {r.registered !== r.contract && ' (계약 수와 다름)'}
+              </Td>
+              <Td>{r.inUse}</Td>
+              <Td>{r.returning}</Td>
+              <Td>{r.available}</Td>
+              <Td>{r.suspended}</Td>
+            </tr>
+          ))}
+        </Table>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="승인 대기" value={pendingApproval} warn={pendingApproval > 0} />
         <Stat label="미배정(승인)" value={waiting} />
         <Stat label="사용중" value={inUse} />
         <Stat label="회수 대상" value={alerts.length} warn={alerts.length > 0} />
-        <Stat label="접속링크 미등록" value={noLink} warn={noLink > 0} />
         <Stat label="장애 미처리" value={openIncidents} warn={openIncidents > 0} />
       </div>
 

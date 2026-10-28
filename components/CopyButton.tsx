@@ -1,6 +1,6 @@
 'use client'
 
-/** 접속 링크 등 짧은 값을 클립보드에 복사하는 버튼 — 관리자가 신청자에게 직접 전달할 때 쓴다 */
+/** 안내문·이메일 목록 등 짧은 값을 클립보드에 복사하는 버튼 — 관리자가 신청자에게 직접 전달할 때 쓴다 */
 import { useState } from 'react'
 
 export default function CopyButton({ value, label = '복사' }: { value: string; label?: string }) {

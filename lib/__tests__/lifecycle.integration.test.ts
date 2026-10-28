@@ -8,9 +8,9 @@
  *
  *  - 실제 DB 에 쓰고 마지막에 지운다. 시범/스테이징 프로젝트에서만 실행할 것.
  *    ACCEPTANCE_DB_HOST 가 SUPABASE_URL 의 호스트와 같을 때만 켜진다 (integration-guard.ts).
- *  - 자동 배정·재배정·일일 작업은 SCOPE(이 RUN 의 좌석·프로그램)로 제한한다.
+ *  - 자동 배정·재배정·일일 작업은 SCOPE(이 RUN 의 계정·프로그램)로 제한한다.
  *  - GMAIL_APP_PASSWORD 는 강제로 비운다(메일은 대기열까지만, 실제 발송 없음).
- *  - 접속 링크가 있는 좌석 1개 + 없는 좌석 1개를 만들어 R14-2·R16 보류 동작까지 확인한다.
+ *  - 접속 링크가 있는 계정 1개 + 없는 계정 1개를 만들어 R14-2·R16 보류 동작까지 확인한다.
  */
 import 'dotenv/config'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -26,11 +26,10 @@ const RUN = `ZSIM${Date.now().toString(36).toUpperCase()}`
 const APPLICANT = (process.env.SIM_EMAIL ?? `${RUN.toLowerCase()}-applicant@example.test`).toLowerCase()
 const PROG = `${RUN}-P1`
 const SEAT_OK = `${RUN}-G1` // 접속 링크 있음
-const SEAT_NOLINK = `${RUN}-G2` // 접속 링크 없음 → 배정 제외
-// 격리(R12·R14): 자동 배정·재배정·일일 작업을 이 RUN 의 좌석·프로그램으로 제한
-const SCOPE = { accountIds: [SEAT_OK, SEAT_NOLINK], programIds: [PROG] }
+const SEAT_2 = `${RUN}-G2` // 두 번째 계정 (대기자 배정용)
+// 격리(R12·R14): 「승인 건 배정 + 메일 내려받기」를 이 RUN 의 계정·프로그램으로 제한
+const SCOPE = { accountIds: [SEAT_OK, SEAT_2], programIds: [PROG] }
 const WAITER = `${RUN.toLowerCase()}-waiter@example.test` // 재배정을 받을 대기자
-const ACCESS_URL = 'https://chatgpt.com/g/team-gnuxai/seat-01'
 
 type Mods = {
   db: typeof import('@/lib/db')
@@ -41,6 +40,7 @@ type Mods = {
   alerts: typeof import('@/lib/alerts')
   daily: typeof import('@/lib/cron/daily')
   token: typeof import('@/lib/token')
+  exporter: typeof import('@/lib/ops/export')
 }
 let M: Mods
 let today = ''
@@ -61,6 +61,7 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
       accounts: await import('@/lib/ops/accounts'),
       alerts: await import('@/lib/alerts'),
       daily: await import('@/lib/cron/daily'),
+      exporter: await import('@/lib/ops/export'),
       token: await import('@/lib/token'),
     }
     today = M.date.todayKST()
@@ -86,18 +87,17 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
       cap: 0,
       status: '진행중',
     })
-    // 좌석 2개: 링크 있음 / 없음
+    // 계정 2개
     await M.accounts.importAccounts(
       [
-        { id: SEAT_OK, service: 'GPT', kind: '운영', login_email: 'seat01@gnuxai.ac.kr', access_url: ACCESS_URL, expires_on: '2099-12-31' },
-        { id: SEAT_NOLINK, service: 'GPT', kind: '운영', login_email: 'seat02@gnuxai.ac.kr', access_url: '', expires_on: '2099-12-31' },
+        { id: SEAT_OK, service: 'GPT', kind: '운영', login_email: 'seat01@gnuxai.ac.kr', expires_on: '2099-12-31' },
+        { id: SEAT_2, service: 'GPT', kind: '운영', login_email: 'seat02@gnuxai.ac.kr', expires_on: '2099-12-31' },
       ],
       'sim',
     )
     step('0. 준비', [
       `프로그램 ${PROG} — 진행중 · 배정일기준 7일`,
-      `좌석 ${SEAT_OK} — 접속 링크 등록(${ACCESS_URL})`,
-      `좌석 ${SEAT_NOLINK} — 접속 링크 없음(배정 제외 대상)`,
+      `계정 ${SEAT_OK}, ${SEAT_2} — GPT 운영 가용`,
     ])
   }, 60_000)
 
@@ -110,7 +110,7 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     const userIds = [...new Set((asgs ?? []).map((a) => a.user_id))]
     await db().from('accounts').update({ status: '가용', current_assignment_id: null }).like('id', `${RUN}%`)
     if (asgIds.length > 0) {
-      // 격리가 깨져 실제 좌석이 잡혔더라도 되돌린다
+      // 격리가 깨져 실제 계정이 잡혔더라도 되돌린다
       await db().from('accounts').update({ status: '가용', current_assignment_id: null }).in('current_assignment_id', asgIds)
       await db().from('alerts').delete().in('assignment_id', asgIds)
       await db().from('mail_queue').delete().in('ref_id', asgIds)
@@ -156,52 +156,43 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     ])
   })
 
-  it('2. 승인 → 자동 배정 — 링크 있는 좌석만 배정, 즉시 사용중, 안내 메일 없음 (R13·R14)', async () => {
-    const pool = await M.assignments.availablePool(SCOPE)
-    expect(pool.map((p) => p.id)).toContain(SEAT_OK)
-    expect(pool.map((p) => p.id)).not.toContain(SEAT_NOLINK)
+  it('2. 승인 → 「승인 건 배정 + 메일 내려받기」 — 승인만으로는 배정 안 됨, 내려받기 때 배정·즉시 사용중 (R13·R14)', async () => {
+    const r = await M.assignments.approveAssignments([ids.a1], 'admin@gnuxai.ac.kr', today)
+    expect(r.approved).toBe(1)
+    const { data: approved } = await M.db.db().from('assignments').select('status').eq('id', ids.a1).single()
+    expect(approved?.status).toBe('승인')
 
-    const r = await M.assignments.approveAssignments([ids.a1], 'admin@gnuxai.ac.kr', today, SCOPE)
-    expect(r.assigned).toContain(ids.a1)
+    const exp = await M.assignments.assignApprovedForExport({ program: PROG }, 'admin@gnuxai.ac.kr', today, SCOPE)
+    expect(exp.assigned.map((a) => a.id)).toContain(ids.a1)
+    const csv = M.exporter.assignedCsv(exp.assigned)
+    expect(csv.split('\n')[0]).toBe('\uFEFF이름,이메일,계정번호')
 
     const { data: row } = await M.db.db().from('assignments').select('status, account_id, service, rent_start, rent_end, acknowledged_at').eq('id', ids.a1).single()
     const { data: acc } = await M.db.db().from('accounts').select('status, current_assignment_id').eq('id', SEAT_OK).single()
-    const { count: mails } = await M.db.db().from('mail_queue').select('id', { count: 'exact', head: true }).eq('ref_id', ids.a1).eq('kind', 'assignment')
-    expect(row?.status).toBe('사용중') // 배정 즉시 사용 개시 (인수 확인 폐지)
+    expect(row?.status).toBe('사용중')
     expect(row?.acknowledged_at).toBeTruthy()
     expect(row?.account_id).toBe(SEAT_OK)
     expect(acc?.status).toBe('배정')
-    expect(mails).toBe(0)
 
-    step('2. 승인·자동 배정', [
-      `배정 풀: ${pool.map((p) => p.id).join(', ')}  (${SEAT_NOLINK} 는 링크 없어 제외)`,
-      `${ids.a1} → 좌석 ${row?.account_id} (${row?.service}) · 상태 ${row?.status} · 대여 ${row?.rent_start} ~ ${row?.rent_end}`,
-      `좌석 ${SEAT_OK}: ${acc?.status}, current=${acc?.current_assignment_id}`,
-      `사용개시 acknowledged_at=${row?.acknowledged_at} · 배정안내 메일 대기열 ${mails}건 (자동 메일 폐지)`,
+    step('2. 승인 → 배정 + 메일 내려받기', [
+      `승인 직후 상태 「${approved?.status}」 (배정 안 됨)`,
+      `내려받기 → ${ids.a1} → 계정 ${row?.account_id} (${row?.service}) · 상태 ${row?.status} · 대여 ${row?.rent_start} ~ ${row?.rent_end}`,
+      `CSV: ${csv.split('\n').slice(1).join(' / ')}`,
     ])
   })
 
-  it('2-1. 대기자 — 좌석이 없으면 「승인」 대기, 링크 없는 좌석에 링크를 넣으면 즉시 배정 (R14-2)', async () => {
+  it('2-1. 대기자 — 승인 후 내려받기로 두 번째 계정 배정 (R14)', async () => {
     const w = await M.apply.applyForAccount({ programId: PROG, name: '대기자', affiliation: 'AI융합원', type: '학생', email: WAITER, service: 'GPT' })
     expect(w.ok).toBe(true)
     if (!w.ok) return
     ids.waiter = w.id
-    const r = await M.assignments.approveAssignments([w.id], 'admin@gnuxai.ac.kr', today, SCOPE)
-    expect(r.assigned).toHaveLength(0)
-    const { data: before } = await M.db.db().from('assignments').select('status').eq('id', w.id).single()
-    expect(before?.status).toBe('승인')
-
-    // 관리자가 두 번째 좌석에 링크 등록 → 자동 배정 실행 → 대기자 배정
-    await M.accounts.setAccessUrl(SEAT_NOLINK, 'https://chatgpt.com/g/team-gnuxai/seat-02', 'admin@gnuxai.ac.kr')
-    const assigned = await M.assignments.autoAssignAll('admin@gnuxai.ac.kr', today, SCOPE)
-    expect(assigned).toContain(w.id)
+    await M.assignments.approveAssignments([w.id], 'admin@gnuxai.ac.kr', today)
+    const exp = await M.assignments.assignApprovedForExport({ program: PROG }, 'admin@gnuxai.ac.kr', today, SCOPE)
+    expect(exp.assigned.map((a) => a.id)).toContain(w.id)
     const { data: after } = await M.db.db().from('assignments').select('status, account_id').eq('id', w.id).single()
-    expect(after?.account_id).toBe(SEAT_NOLINK)
+    expect(after?.account_id).toBe(SEAT_2)
 
-    step('2-1. 대기자 처리', [
-      `대기자 ${w.id} 승인 시 가용 좌석 없음 → 상태 「${before?.status}」 유지`,
-      `좌석 ${SEAT_NOLINK} 에 링크 등록 → 자동 배정 → ${after?.status}, 좌석 ${after?.account_id}`,
-    ])
+    step('2-1. 대기자 처리', [`대기자 ${w.id} → 내려받기 배정 → ${after?.status}, 계정 ${after?.account_id}`])
   })
 
   it('3. 장애 신고 링크 — 서명 링크 검증, 위조 거부 (§8)', async () => {
@@ -219,9 +210,9 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     const yesterday = M.date.addDays(today, -1)
     await M.db.db().from('assignments').update({ rent_end: yesterday }).eq('id', ids.a1)
 
-    const d1 = await M.daily.runDaily('system', today, SCOPE)
+    const d1 = await M.daily.runDaily('system', today)
     expect(d1.rent_ended).toContain(ids.a1)
-    const d2 = await M.daily.runDaily('system', today, SCOPE) // 멱등
+    const d2 = await M.daily.runDaily('system', today) // 멱등
     expect(d2.rent_ended).toHaveLength(0)
 
     const { data: row } = await M.db.db().from('assignments').select('status').eq('id', ids.a1).single()
@@ -233,37 +224,39 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
 
     step('4. 대여 종료 → 회수중', [
       `rent_end 를 ${yesterday} 로 두고 일일 작업 실행 → 종료 처리 ${d1.rent_ended.length}건, 2회째 ${d2.rent_ended.length}건(멱등)`,
-      `배정 ${ids.a1}: ${row?.status} · 좌석 ${SEAT_OK}: ${acc?.status}, current=${acc?.current_assignment_id}`,
+      `배정 ${ids.a1}: ${row?.status} · 계정 ${SEAT_OK}: ${acc?.status}, current=${acc?.current_assignment_id}`,
       `계정 알림: ${acc?.alert}`,
       `alerts: [${alerts[0]?.category}] ${alerts[0]?.guide}`,
     ])
   })
 
-  it('5. 회수 — 체크 2개 전 거부, 완료 후 좌석 가용, 대기자 재배정 (R24)', async () => {
-    // 재배정을 받을 대기자를 하나 더 만든다 (좌석 2개가 모두 사용 중이므로 승인 상태로 대기)
+  it('5. 회수 — 체크 2개 전 거부, 완료 후 계정 가용, 대기자 재배정 (R24)', async () => {
+    // 재배정을 받을 대기자를 하나 더 만든다 (계정 2개가 모두 사용 중이므로 승인 상태로 대기)
     const w2 = await M.apply.applyForAccount({ programId: PROG, name: '대기자2', affiliation: 'AI융합원', type: '학생', email: `${RUN.toLowerCase()}-w2@example.test`, service: 'GPT' })
     expect(w2.ok).toBe(true)
     if (!w2.ok) return
-    await M.assignments.approveAssignments([w2.id], 'admin@gnuxai.ac.kr', today, SCOPE)
+    await M.assignments.approveAssignments([w2.id], 'admin@gnuxai.ac.kr', today)
 
-    await expect(M.assignments.completeReturn(ids.a1, 'admin@gnuxai.ac.kr', today, SCOPE)).rejects.toThrow('2개')
+    await expect(M.assignments.completeReturn(ids.a1, 'admin@gnuxai.ac.kr', today)).rejects.toThrow('2개')
     await M.assignments.setChecklist(ids.a1, 'chk_delete_chats', true, 'admin@gnuxai.ac.kr')
-    await expect(M.assignments.completeReturn(ids.a1, 'admin@gnuxai.ac.kr', today, SCOPE)).rejects.toThrow('2개')
+    await expect(M.assignments.completeReturn(ids.a1, 'admin@gnuxai.ac.kr', today)).rejects.toThrow('2개')
     await M.assignments.setChecklist(ids.a1, 'chk_team_removed', true, 'admin@gnuxai.ac.kr')
-    const { reassigned } = await M.assignments.completeReturn(ids.a1, 'admin@gnuxai.ac.kr', today, SCOPE)
+    await M.assignments.completeReturn(ids.a1, 'admin@gnuxai.ac.kr', today)
+    // 회수 직후 자동 재배정은 폐지 — 내려받기로 배정
+    const exp = await M.assignments.assignApprovedForExport({ program: PROG }, 'admin@gnuxai.ac.kr', today, SCOPE)
 
     const { data: row } = await M.db.db().from('assignments').select('status, returned_at').eq('id', ids.a1).single()
     const { data: acc } = await M.db.db().from('accounts').select('status, current_assignment_id, assigned_count').eq('id', SEAT_OK).single()
     const { data: next } = await M.db.db().from('assignments').select('status, account_id').eq('id', w2.id).single()
     expect(row?.status).toBe('회수완료')
-    expect(reassigned).toContain(w2.id)
+    expect(exp.assigned.map((a) => a.id)).toContain(w2.id)
     expect(next?.account_id).toBe(SEAT_OK)
-    expect(acc?.status).toBe('배정') // 재배정으로 곧바로 다시 배정됨
+    expect(acc?.status).toBe('배정') // 내려받기 배정으로 다시 배정됨
 
     step('5. 회수 → 재배정', [
       `체크 0개·1개 상태에서 「회수 완료」 → 거부(2개 항목 필요)`,
       `① 대화·메모리 삭제 ② 팀에서 제거 체크 후 회수 완료 → ${row?.status}, returned_at ${row?.returned_at}`,
-      `좌석 ${SEAT_OK} → 대기자2 ${w2.id} 에게 즉시 재배정 (좌석 상태 ${acc?.status}, current=${acc?.current_assignment_id})`,
+      `계정 ${SEAT_OK} → 내려받기로 대기자2 ${w2.id} 에게 배정 (계정 상태 ${acc?.status}, current=${acc?.current_assignment_id})`,
     ])
   })
 

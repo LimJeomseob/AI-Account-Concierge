@@ -8,10 +8,11 @@ import { CHECKLIST_FIELDS, L } from '@/lib/labels'
 import { applicantEmails, exportQuery } from '@/lib/ops/export'
 import { incidentUrl } from '@/lib/token'
 import { approveAction, cancelAction, checklistAction, completeReturnAction } from '@/app/admin/actions'
+import AssignExportButton from './AssignExportButton'
 
 export const dynamic = 'force-dynamic'
 
-const STATUSES = ['신청', '승인', '배정', '사용중', '회수중', '회수완료', '반려', '취소', '인수기한초과']
+const STATUSES = ['신청', '승인', '사용중', '회수중', '회수완료', '취소', '반려', '배정', '인수기한초과'] // 반려·배정·인수기한초과는 구 상태(조회용)
 
 type Search = Promise<{ status?: string; program?: string; q?: string }>
 
@@ -39,15 +40,12 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   const emails = applicantEmails(rows ?? [])
   const exportHref = `/api/admin/assignments/export${exportQuery({ status, program, q })}`
 
-  // 접속 링크는 자동 메일 대신 관리자가 화면에서 보고 직접 전달한다 (2026-10-28, R16 폐지)
+  // 계정의 로그인 이메일(계정명) — 안내문에 쓴다. 접속 링크 기능은 2026-10-29 폐지(R14-2)
   const accountIds = [...new Set((rows ?? []).map((r) => r.account_id).filter((v): v is string => !!v))]
-  const links = new Map<string, { login_email: string | null; access_url: string | null }>()
+  const loginEmails = new Map<string, string | null>()
   if (accountIds.length > 0) {
-    const { data: secs } = await db()
-      .from('account_secrets')
-      .select('account_id, login_email, access_url')
-      .in('account_id', accountIds)
-    for (const x of secs ?? []) links.set(x.account_id, { login_email: x.login_email, access_url: x.access_url })
+    const { data: secs } = await db().from('account_secrets').select('account_id, login_email').in('account_id', accountIds)
+    for (const x of secs ?? []) loginEmails.set(x.account_id, x.login_email)
   }
 
   return (
@@ -97,15 +95,23 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
             {L.assignment.export_csv}
           </a>
           {emails.length > 0 && <CopyButton value={emails.join(', ')} label={L.assignment.copy_emails} />}
+          <span className="text-xs text-slate-400">(조회용 — 배정되지 않음)</span>
+        </div>
+        <div className="mt-3 border-t border-gnu-line pt-3">
+          <AssignExportButton program={program} q={q} />
+          <p className="mt-1 text-xs text-slate-500">
+            현재 목록 조건(프로그램·검색어)에 걸린 「승인」 건에 신청 순으로 계정을 배정하고, 배정된 사람의 이름·이메일·계정번호를 내려받습니다.
+            받은 이메일을 ChatGPT·Claude 팀 워크스페이스에 초대해 주세요.
+          </p>
         </div>
       </Card>
 
       <Card title="일괄 처리">
         <form action={approveAction} className="space-y-2">
           <p className="text-xs text-slate-500">
-            아래 표에서 선택한 건을 승인합니다. 설정의 「승인 즉시 배정」이 켜져 있으면 바로 좌석이 배정되어 「사용중」이 됩니다. 신청자에게 자동 메일은 가지 않으므로 접속 링크를 복사해 직접 전달해 주세요.
+            ① 아래 표에서 선택한 건을 승인합니다(승인만 하고 배정은 하지 않음) → ② 위 「승인 건 배정 + 메일 내려받기」로 계정 배정 → ③ 받은 이메일을 팀 워크스페이스에 초대.
           </p>
-          <ListTable rows={rows ?? []} links={links} />
+          <ListTable rows={rows ?? []} />
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <Button>선택 승인</Button>
           </div>
@@ -125,18 +131,16 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
               <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-gnu-sky/60 px-3 py-2 text-sm">
                 <span className="font-medium text-gnu-navy">신청자에게 전달할 정보</span>
                 <span>이메일 {r.email}</span>
-                <span>· 계정명 {links.get(r.account_id)?.login_email ?? '-'}</span>
-                <span className="break-all">· 접속 링크 {links.get(r.account_id)?.access_url ?? '(미등록)'}</span>
-                {links.get(r.account_id)?.access_url && (
-                  <CopyButton
-                    value={`[AI융합원] ${r.name}님 AI 유료계정 안내
-계정: ${r.account_id} (${r.service})
-접속 링크: ${links.get(r.account_id)?.access_url}
+                <span>· 계정번호 {r.account_id} ({r.service})</span>
+                <span>· 계정명 {loginEmails.get(r.account_id) ?? '-'}</span>
+                <CopyButton
+                  value={`[AI융합원] ${r.name}님 AI 유료계정 안내
+계정번호: ${r.account_id} (${r.service})
+팀 워크스페이스 초대 메일(${r.email})을 확인해 주세요.
 대여기간: ${r.rent_start ?? '-'} ~ ${r.rent_end ?? '-'}
 장애 신고(정지·로그인 불가): ${incidentUrl(appUrl, r.id)}`}
-                    label="안내문 복사"
-                  />
-                )}
+                  label="안내문 복사"
+                />
               </div>
             )}
 
@@ -156,7 +160,7 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
               <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 p-3">
                 <p className="text-xs font-medium text-orange-800">회수 체크리스트 (2개 모두 완료해야 회수 완료)</p>
                 <p className="mt-1 text-xs text-orange-700">
-                  ① 좌석에 로그인해 대화·메모리 삭제 → ② 팀 콘솔에서 좌석 제거(접속 차단)
+                  ① 계정의 대화·메모리 삭제 → ② 팀 콘솔에서 멤버 제거(접속 차단)
                 </p>
                 <div className="mt-2 flex flex-wrap gap-3">
                   {CHECKLIST_FIELDS.map((f) => {
@@ -192,15 +196,9 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   )
 }
 
-function ListTable({
-  rows,
-  links,
-}: {
-  rows: Array<Record<string, unknown>>
-  links: Map<string, { login_email: string | null; access_url: string | null }>
-}) {
+function ListTable({ rows }: { rows: Array<Record<string, unknown>> }) {
   return (
-    <Table head={['선택', '접수번호', '프로그램', '이름', '이메일', '희망', '계정', '상태', '대여기간', '접속 링크']}>
+    <Table head={['선택', '접수번호', '프로그램', '이름', '이메일', '희망', L.account.id, '상태', '대여기간']}>
       {rows.map((r) => {
         const row = r as {
           id: string
@@ -214,7 +212,6 @@ function ListTable({
           rent_end: string | null
           programs: { name: string } | null
         }
-        const url = row.account_id ? links.get(row.account_id)?.access_url ?? null : null
         return (
           <tr key={row.id}>
             <Td>
@@ -232,7 +229,6 @@ function ListTable({
             <Td className="text-xs">
               {row.rent_start ?? '-'} ~ {row.rent_end ?? '-'}
             </Td>
-            <Td>{url ? <CopyButton value={url} label="링크 복사" /> : row.account_id ? <span className="text-red-700">미등록</span> : '-'}</Td>
           </tr>
         )
       })}

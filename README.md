@@ -3,8 +3,8 @@
 경상국립대학교 AI융합원 · 2026학년도 하반기 「AI 유료계정 지원 계획(안)」 운영 시스템
 사양: [`docs/PRD.md`](docs/PRD.md) · 운영: [`docs/운영매뉴얼.md`](docs/운영매뉴얼.md)
 
-ChatGPT Team 50 + Claude Team 50 좌석(고정 접속 링크)을 하반기 교육 프로그램 참여자에게 회전 대여하고,
-신청 → 승인 → 자동 배정(즉시 사용중) → 담당자 직접 안내 → 대여 종료 → 회수 → 재배정 전 과정을
+ChatGPT Business Standard 45 + Claude Team 71 계정(계정번호 GPT-001·CL-001 …)을 하반기 교육 프로그램 참여자에게 회전 대여하고,
+신청 → 승인 → 「승인 건 배정 + 메일 내려받기」(즉시 사용중) → 워크스페이스 초대 → 대여 종료 → 회수 전 과정을
 관리자 화면 하나에서 처리한다. 신청자에게 자동 메일은 보내지 않는다(관리자 점검·장애·스냅샷 메일만).
 
 ## 스택
@@ -47,9 +47,9 @@ for f in supabase/migrations/0*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 
 # 2) 시드 (설정·메일 템플릿·최초 관리자 [+ 프로그램 24개, 샘플 계정])
 npx tsx scripts/seed.ts --programs --sample-accounts
 
-# 3) 계정 100개 납품 후
+# 3) 계정 등록 (ChatGPT 45 · Claude 71)
 npx tsx scripts/import-accounts.ts accounts.csv
-#    헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일
+#    헤더: 계정번호,서비스,구분,로그인이메일,활성화일,만료일
 
 # 4) 실행
 npm run dev        # http://localhost:3000/admin
@@ -69,7 +69,7 @@ GitHub Pages 장애 시 대체용으로 같은 기능의 `/apply` 페이지를 �
 
 `vercel.json` 이 다음 두 작업을 등록한다 (UTC 00:00 = KST 09:00).
 
-- `/api/cron/daily` — 대여 종료, 회수 알림, 자동 배정, 메일 발송(장애·스냅샷), 계정 통계
+- `/api/cron/daily` — 대여 종료, 회수 알림, 메일 발송(장애·스냅샷), 계정 통계
   (멱등·실행 잠금, 단계 오류는 대시보드 경고 + 500 응답)
 - `/api/cron/monthly` — 월간 실적 스냅샷 + CSV + 관리자 메일 (매월 1일 UTC 00:10)
 
@@ -83,11 +83,11 @@ npm test              # 도메인 로직 단위 테스트 (Vitest) — GitHub Ac
 npm run build         # 타입체크 + 프로덕션 빌드
 
 # 수용 기준 T1~T13 (PRD §16) — 실제 Supabase 연결 필요, 시범/스테이징에서만.
-# ACCEPTANCE_DB_HOST 에 시범 DB 호스트를 적어야 켜진다(운영 DB 오실행 방지). 테스트는 자기 좌석·프로그램 안에서만 배정한다.
+# ACCEPTANCE_DB_HOST 에 시범 DB 호스트를 적어야 켜진다(운영 DB 오실행 방지). 테스트는 자기 계정·프로그램 안에서만 배정한다.
 ACCEPTANCE_CONFIRM=yes ACCEPTANCE_DB_HOST=<시범프로젝트>.supabase.co npm run test:acceptance
 ```
 
-`supabase/migrations/0001_init.sql`~`0003_team_seat_access_url.sql` 은 PostgreSQL 16 에서 적용·재적용(멱등)과
+`supabase/migrations/0001_init.sql`~`0006_drop_access_link_rule.sql` 은 PostgreSQL 16 에서 적용·재적용(멱등)과
 제약(중복 신청 차단, `current_assignment_id` 상태 제약) 동작을 확인했다.
 PRD §16 의 시나리오 T1~T13 은 `lib/__tests__/acceptance.integration.test.ts` 로 자동화돼 있으며,
 실제 Supabase 연결이 있을 때만 실행된다(테스트 데이터는 `ZTEST` 접두, 종료 시 삭제, 메일 발송 차단).

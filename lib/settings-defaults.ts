@@ -17,7 +17,9 @@ export interface Settings {
   privacy_items: string
   privacy_purpose: string
   privacy_period: string
-  auto_assign_on_approve: boolean
+  /** 유료계정 지원현황 — 서비스별 계약 계정 수(대시보드 비교용) */
+  contract_gpt: number
+  contract_claude: number
   target_headcount: number
   program_id_prefix: string
   signup_origins: string[]
@@ -34,7 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
   privacy_items: '이름, 소속, 구분, 이메일, 연락처',
   privacy_purpose: 'AI 유료계정 배정·안내 및 실적 관리',
   privacy_period: '사업 종료 후 1년',
-  auto_assign_on_approve: true,
+  contract_gpt: 45, // ChatGPT Business Standard
+  contract_claude: 71, // Claude Team
   target_headcount: 600,
   program_id_prefix: 'P26',
   signup_origins: [],

@@ -132,3 +132,42 @@ export function summaryCsv(s: SummaryReport): string {
     ],
   )
 }
+
+// --- 유료계정 지원현황 --------------------------------------------------------
+
+export interface SupportRow {
+  service: 'GPT' | 'Claude'
+  label: string
+  contract: number
+  /** 등록 계정(만료 제외) */
+  registered: number
+  inUse: number
+  returning: number
+  available: number
+  suspended: number
+}
+
+/** 서비스별 계약 수 대비 등록·사용 현황 (순수 함수) — 대시보드 「유료계정 지원현황」 */
+export function supportStatus(
+  accounts: Array<{ service: string; status: string }>,
+  contract: { GPT: number; Claude: number },
+): SupportRow[] {
+  const services = [
+    { service: 'GPT' as const, label: 'ChatGPT Business Standard' },
+    { service: 'Claude' as const, label: 'Claude Team' },
+  ]
+  return services.map(({ service, label }) => {
+    const list = accounts.filter((a) => a.service === service)
+    const by = (st: string) => list.filter((a) => a.status === st).length
+    return {
+      service,
+      label,
+      contract: contract[service],
+      registered: list.filter((a) => a.status !== '만료').length,
+      inUse: by('배정'),
+      returning: by('회수중'),
+      available: by('가용'),
+      suspended: by('정지'),
+    }
+  })
+}

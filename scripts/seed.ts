@@ -104,7 +104,6 @@ async function main() {
         {
           account_id: s.id,
           login_email: `${s.id.toLowerCase()}@example.ac.kr`,
-          access_url: `https://example.invalid/team/${s.id.toLowerCase()}`,
         },
         { onConflict: 'account_id' },
       )

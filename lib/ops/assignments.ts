@@ -6,7 +6,6 @@ import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
 import { capRemaining, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
-import { getSettings } from '@/lib/settings'
 import { claimAccount, log, releaseClaim, transitionAccount, transitionAssignment } from '@/lib/state'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
 import type { Program, Service } from '@/lib/types'
@@ -14,38 +13,32 @@ import type { Program, Service } from '@/lib/types'
 const ACTIVE_OCCUPYING = ['배정', '사용중', '회수중', '회수완료'] as const
 
 /**
- * 배정 범위 제한 — 통합 테스트 격리용. 운영 코드는 넘기지 않는다(= 전체).
- * 자동 배정은 가용 좌석 전체에서 고르므로, 테스트가 만든 신청이 실제 운영 좌석을 잡거나
- * 회수 후 재배정이 실제 프로그램 대기자에게 테스트 좌석을 주는 일을 막는다.
+ * 배정 범위 제한.
+ *  - accountIds·programIds: 통합 테스트 격리용(운영 코드는 넘기지 않음) — 테스트 신청이 실제 운영 계정을 잡지 않게
+ *  - assignmentIds: 「승인 건 배정 + 메일 내려받기」가 화면 필터에 걸린 승인 건만 배정하도록
  */
 export interface AssignScope {
-  /** 이 좌석들만 배정 풀에 넣는다 */
+  /** 이 계정들만 배정 풀에 넣는다 */
   accountIds?: string[]
-  /** 이 프로그램들만 자동 배정 대상으로 본다 (autoAssignAll·completeReturn 재배정) */
+  /** 이 프로그램들만 배정 대상으로 본다 */
   programIds?: string[]
+  /** 이 신청 건들만 대기열에 넣는다 */
+  assignmentIds?: string[]
 }
 
-/** 배정 가능한 계정 풀 (가용 ∧ 운영 ∧ 접속 링크 등록) — R14-2 */
+/** 배정 가능한 계정 풀 (가용 ∧ 운영). 접속 링크 조건(R14-2)은 2026-10-29 폐지 */
 export async function availablePool(scope?: AssignScope): Promise<PoolAccount[]> {
   let q = db().from('accounts').select('id, service, kind, expires_on').eq('status', '가용').eq('kind', '운영')
   if (scope?.accountIds) q = q.in('id', scope.accountIds)
   const { data: accs, error } = await q
   if (error) throw new Error(error.message)
-  const ids = (accs ?? []).map((a) => a.id)
-  if (ids.length === 0) return []
-  const { data: secs } = await db()
-    .from('account_secrets')
-    .select('account_id')
-    .in('account_id', ids)
-    .not('access_url', 'is', null)
-  const ok = new Set((secs ?? []).map((s) => s.account_id))
-  return (accs ?? []).filter((a) => ok.has(a.id)) as PoolAccount[]
+  return (accs ?? []) as PoolAccount[]
 }
 
 /**
- * 좌석 1개를 승인 건 1개에 배정한다 (R14·R14-2).
- * ① 좌석 선점(조건부, lib/state.ts:claimAccount) → ② 배정 「승인 → 사용중」 전이(조건부).
- * ②가 false 이거나 예외면 ①을 되돌린다 — 좌석이 「배정」인 채로 아무 건에도 연결되지 않는 고아 상태 방지.
+ * 계정 1개를 승인 건 1개에 배정한다 (R14).
+ * ① 계정 선점(조건부, lib/state.ts:claimAccount) → ② 배정 「승인 → 사용중」 전이(조건부).
+ * ②가 false 이거나 예외면 ①을 되돌린다 — 계정이 「배정」인 채로 아무 건에도 연결되지 않는 고아 상태 방지.
  */
 async function assignSeat(opts: {
   assignmentId: string
@@ -113,13 +106,14 @@ export async function autoAssignProgram(
   const left = capRemaining(p.cap, occupied ?? 0)
   if (left <= 0) return []
 
-  const { data: queueRows } = await db()
+  let queueQ = db()
     .from('assignments')
     .select('id, service_wish, applied_at')
     .eq('program_id', programId)
     .eq('status', '승인')
     .is('account_id', null)
-    .order('applied_at', { ascending: true })
+  if (scope?.assignmentIds) queueQ = queueQ.in('id', scope.assignmentIds)
+  const { data: queueRows } = await queueQ.order('applied_at', { ascending: true })
 
   const queue = (queueRows ?? []) as QueueItem[]
   if (queue.length === 0) return []
@@ -142,35 +136,22 @@ export async function autoAssignProgram(
       },
       detail: { service: alloc.service, period },
     })
-    if (!ok) continue // 좌석을 다른 처리가 먼저 가져갔거나 대기열 상태가 바뀜
+    if (!ok) continue // 계정을 다른 처리가 먼저 가져갔거나 대기열 상태가 바뀜
 
     assigned.push(alloc.assignment_id)
   }
   return assigned
 }
 
-/** 진행 중인 모든 프로그램에 대해 자동 배정 (일일 작업 4단계) */
-export async function autoAssignAll(actor: string, today: string = todayKST(), scope?: AssignScope): Promise<string[]> {
-  let q = db().from('programs').select('id').eq('status', '진행중')
-  if (scope?.programIds) q = q.in('id', scope.programIds)
-  const { data: programs } = await q
-  const out: string[] = []
-  for (const p of programs ?? []) {
-    out.push(...(await autoAssignProgram(p.id, actor, today, scope)))
-  }
-  return out
-}
-
-/** R13: 승인 (+ 설정에 따라 즉시 자동 배정) */
+/**
+ * R13: 승인만 한다. 배정은 관리자가 「승인 건 배정 + 메일 내려받기」를 누를 때 일어난다(R14, 2026-10-29).
+ */
 export async function approveAssignments(
   ids: string[],
   actor: string,
   today: string = todayKST(),
-  scope?: AssignScope,
-): Promise<{ approved: number; assigned: string[] }> {
-  const s = await getSettings()
+): Promise<{ approved: number }> {
   let approved = 0
-  const programIds = new Set<string>()
 
   for (const id of ids) {
     const { data: row } = await db().from('assignments').select('program_id, status').eq('id', id).single()
@@ -183,22 +164,79 @@ export async function approveAssignments(
       expect: ['신청'],
       patch: { approved_on: today, approved_by: actor },
     })
-    if (ok) {
-      approved += 1
-      programIds.add(row.program_id)
-    }
+    if (ok) approved += 1
   }
+  return { approved }
+}
 
-  const assigned: string[] = []
-  if (s.auto_assign_on_approve) {
-    for (const pid of programIds) assigned.push(...(await autoAssignProgram(pid, actor, today, scope)))
-  }
-  return { approved, assigned }
+export interface ExportAssignResult {
+  /** 이번에 배정된 신청자 — 관리자가 이 이메일들을 팀 워크스페이스에 초대한다 */
+  assigned: Array<{ id: string; name: string; email: string; account_id: string }>
+  /** 대상 승인 건 중 대여기간이 없거나 진행중이 아닌 프로그램이라 배정하지 못한 수 */
+  noPeriod: number
+  /** 대상 승인 건 중 가용 계정·배정상한이 모자라 대기로 남은 수 */
+  shortage: number
 }
 
 /**
- * R17: 취소. 좌석을 쥐고 있던 건은 「회수중」(회수 체크리스트 R24 를 거쳐야 좌석이 풀림), 아니면 「취소」.
- * 배정 전이를 먼저 하고(조건부), 좌석은 이 건에 연결돼 있을 때만 회수중으로 옮긴다.
+ * R14: 「승인 건 배정 + 메일 내려받기」 — 화면 필터(프로그램·검색어)에 걸린 「승인」 건을 신청 순으로
+ * 가용 계정에 배정한다. 프로그램별로 autoAssignProgram 을 그대로 써서 상한(R5)·대여기간(R15)·
+ * 희망 서비스·조건부 선점을 지킨다.
+ */
+export async function assignApprovedForExport(
+  filter: { program?: string; q?: string },
+  actor: string,
+  today: string = todayKST(),
+  scope?: AssignScope,
+): Promise<ExportAssignResult> {
+  let q = db().from('assignments').select('id, program_id').eq('status', '승인').is('account_id', null)
+  if (filter.program) q = q.eq('program_id', filter.program)
+  if (filter.q) q = q.or(`name.ilike.%${filter.q}%,email.ilike.%${filter.q}%,id.ilike.%${filter.q}%`)
+  if (scope?.programIds) q = q.in('program_id', scope.programIds)
+  const { data: targets, error } = await q.order('applied_at', { ascending: true })
+  if (error) throw new Error(error.message)
+  const rows = targets ?? []
+  const ids = rows.map((r) => r.id)
+  if (ids.length === 0) return { assigned: [], noPeriod: 0, shortage: 0 }
+
+  const byProgram = new Map<string, number>()
+  for (const r of rows) byProgram.set(r.program_id, (byProgram.get(r.program_id) ?? 0) + 1)
+
+  const assignedIds: string[] = []
+  let noPeriod = 0
+  for (const [pid, count] of byProgram) {
+    const { data: program } = await db().from('programs').select('*').eq('id', pid).maybeSingle()
+    if (!program || !isAssignable(program as Program, today)) {
+      noPeriod += count
+      continue
+    }
+    assignedIds.push(...(await autoAssignProgram(pid, actor, today, { ...scope, assignmentIds: ids })))
+  }
+
+  let assigned: ExportAssignResult['assigned'] = []
+  if (assignedIds.length > 0) {
+    const { data } = await db()
+      .from('assignments')
+      .select('id, name, email, account_id, applied_at')
+      .in('id', assignedIds)
+      .order('applied_at', { ascending: true })
+    assigned = (data ?? []).map((r) => ({ id: r.id, name: r.name, email: r.email, account_id: r.account_id as string }))
+  }
+  const shortage = ids.length - noPeriod - assigned.length
+  // R31: 건수만 기록 — 이메일 등 개인정보는 남기지 않는다
+  await log(actor, 'assignments.assign_export', null, {
+    targets: ids.length,
+    assigned: assigned.length,
+    no_period: noPeriod,
+    shortage,
+    program: filter.program ?? '',
+  })
+  return { assigned, noPeriod, shortage }
+}
+
+/**
+ * R17: 취소. 계정을 쥐고 있던 건은 「회수중」(회수 체크리스트 R24 를 거쳐야 계정이 풀림), 아니면 「취소」.
+ * 배정 전이를 먼저 하고(조건부), 계정은 이 건에 연결돼 있을 때만 회수중으로 옮긴다.
  * cancelled_at 을 남겨 실적(R29)에서 제외한다(0005).
  */
 export async function cancelAssignment(id: string, actor: string, reason = ''): Promise<void> {
@@ -225,7 +263,7 @@ export async function cancelAssignment(id: string, actor: string, reason = ''): 
 
 /**
  * 계정을 회수중으로 옮긴다 (R20).
- * 접근 차단(좌석을 팀에서 제거)은 관리자가 회수 체크리스트 ②로 처리한다(R24).
+ * 접근 차단(계정을 팀에서 제거)은 관리자가 회수 체크리스트 ②로 처리한다(R24).
  */
 export async function moveAccountToReturning(
   accountId: string,
@@ -238,7 +276,7 @@ export async function moveAccountToReturning(
     .eq('id', accountId)
     .single()
   if (!acc) return
-  // 이 배정이 쥔 좌석이거나, 연결이 풀린 정지 좌석일 때만 옮긴다 — 다른 사람에게 이미 넘어간 좌석을 빼앗지 않는다
+  // 이 배정이 쥔 계정이거나, 연결이 풀린 정지 계정일 때만 옮긴다 — 다른 사람에게 이미 넘어간 계정을 빼앗지 않는다
   const mine = acc.current_assignment_id === assignmentId
   const orphanSuspended = acc.status === '정지' && acc.current_assignment_id === null
   if (!mine && !orphanSuspended) {
@@ -302,13 +340,12 @@ export async function setChecklist(
   await log(actor, 'assignment.checklist', id, { field, value })
 }
 
-/** R24: 회수 완료 (2개 체크 필수) → 계정 가용 → 즉시 재배정 시도 */
+/** R24: 회수 완료 (2개 체크 필수) → 계정 가용 */
 export async function completeReturn(
   id: string,
   actor: string,
   today: string = todayKST(),
-  scope?: AssignScope,
-): Promise<{ reassigned: string[] }> {
+): Promise<void> {
   const { data: a } = await db()
     .from('assignments')
     .select('status, account_id, program_id, chk_delete_chats, chk_team_removed')
@@ -331,7 +368,7 @@ export async function completeReturn(
   if (!ok) throw new Error('이미 회수 완료됐거나 상태가 바뀌었습니다. 새로고침 후 확인해 주세요.')
 
   if (a.account_id) {
-    // 이 건이 쥔 좌석만 가용으로 푼다. 정지 좌석은 정지 유지(장애 처리), 다른 건에 연결된 좌석은 건드리지 않음
+    // 이 건이 쥔 계정만 가용으로 푼다. 정지 계정은 정지 유지(장애 처리), 다른 건에 연결된 계정은 건드리지 않음
     const { data: acc } = await db()
       .from('accounts')
       .select('status, current_assignment_id')
@@ -356,13 +393,7 @@ export async function completeReturn(
     }
   }
 
-  // 회수 즉시 재배정 (해당 프로그램 우선 → 나머지 진행 프로그램)
-  const reassigned = await autoAssignProgram(a.program_id, actor, today, scope)
-  let othersQ = db().from('programs').select('id').eq('status', '진행중').neq('id', a.program_id)
-  if (scope?.programIds) othersQ = othersQ.in('id', scope.programIds)
-  const { data: others } = await othersQ
-  for (const p of others ?? []) reassigned.push(...(await autoAssignProgram(p.id, actor, today, scope)))
-  return { reassigned }
+  // 회수 직후 대기자 자동 재배정은 2026-10-29 폐지 — 배정은 「승인 건 배정 + 메일 내려받기」로만
 }
 
 /** 관리자 수동 배정 (계정 지정) */
@@ -384,13 +415,6 @@ export async function manualAssign(
   const period = periodFor(program as Program, today)
   if (!period) throw new Error('프로그램 대여기간이 설정되지 않았습니다.')
 
-  // R14-2: 접속 링크가 없는 좌석은 자동·수동 모두 배정 대상이 아니다.
-  const { data: sec } = await db()
-    .from('account_secrets')
-    .select('access_url')
-    .eq('account_id', accountId)
-    .maybeSingle()
-  if (!sec?.access_url) throw new Error('접속 링크가 등록되지 않은 계정은 배정할 수 없습니다.')
 
   const { data: acc } = await db().from('accounts').select('service').eq('id', accountId).maybeSingle()
   if (!acc) throw new Error(`계정 ${accountId} 없음`)

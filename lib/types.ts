@@ -45,7 +45,7 @@ export interface Account {
   updated_at?: string
 }
 
-/** 좌석 접속 정보 (서버 전용) — 비어 있는 access_url 은 배정 풀에서 제외 (R14-2) */
+/** 계정 접속 정보 (서버 전용). access_url 열은 DB 에 남아 있으나 2026-10-29 부터 쓰지 않는다(R14-2 폐지) */
 export interface AccountSecret {
   account_id: string
   login_email: string | null

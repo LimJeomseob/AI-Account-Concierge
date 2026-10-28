@@ -1,7 +1,7 @@
 /**
  * 계정 CSV 가져오기 (PRD §7-2 계정)
  * 사용법: npx tsx scripts/import-accounts.ts accounts.csv
- * 헤더: 계정ID,서비스,구분,로그인이메일,접속링크,활성화일,만료일
+ * 헤더: 계정번호,서비스,구분,로그인이메일,활성화일,만료일 (「계정ID」 헤더도 허용, 「접속링크」 열은 무시 — R14-2 폐지)
  */
 // .env.local 을 우선 읽고, 없는 값은 .env 로 보충한다 (Next.js 규칙과 맞춤)
 import { config as loadEnv } from 'dotenv'
@@ -62,12 +62,10 @@ async function main() {
   let n = 0
   for (const line of lines.slice(1)) {
     const c = splitCsvLine(line)
-    const id = c[at('계정ID')]?.trim()
+    const id = c[at('계정번호') >= 0 ? at('계정번호') : at('계정ID')]?.trim()
     if (!id) continue
     const svc = (c[at('서비스')] ?? '').trim()
     const service = svc === 'Claude' || svc === 'CL' ? 'Claude' : 'GPT'
-    const rawUrl = at('접속링크') >= 0 ? (c[at('접속링크')] ?? '').trim() : ''
-    if (rawUrl && !/^https?:\/\//i.test(rawUrl)) throw new Error(`${id}: 접속 링크는 http(s):// 로 시작해야 합니다.`)
 
     const { error } = await db.from('accounts').upsert(
       {
@@ -82,16 +80,14 @@ async function main() {
     )
     if (error) throw new Error(`${id}: ${error.message}`)
 
-    const { error: sErr } = await db.from('account_secrets').upsert(
-      {
-        account_id: id,
-        login_email: c[at('로그인이메일')]?.trim() || null,
-        access_url: rawUrl || null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'account_id' },
-    )
-    if (sErr) throw new Error(`${id} 접속 정보: ${sErr.message}`)
+    // 로그인 이메일 열이 있을 때만 갱신 — 열이 없는 CSV 로 기존 값을 지우지 않는다
+    if (at('로그인이메일') >= 0) {
+      const { error: sErr } = await db.from('account_secrets').upsert(
+        { account_id: id, login_email: c[at('로그인이메일')]?.trim() || null, updated_at: new Date().toISOString() },
+        { onConflict: 'account_id' },
+      )
+      if (sErr) throw new Error(`${id} 로그인 이메일: ${sErr.message}`)
+    }
     n += 1
   }
   console.log(`계정 ${n}건 가져오기 완료`)

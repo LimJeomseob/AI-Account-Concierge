@@ -85,7 +85,7 @@
 
     <label style="margin-top:16px">이용 서약 <span style="color:#b91c1c">*</span></label>
     <div class="notice">
-      · 배정받은 계정은 본인만 사용하며 접속 링크를 타인에게 공유하지 않습니다.<br />
+      · 배정받은 계정은 본인만 사용하며 타인에게 공유하지 않습니다.<br />
       · 개인정보·미공개 연구자료·내부 문서를 입력하지 않습니다.<br />
       · GNU AI 윤리가이드라인을 준수하며, 대여 종료 시 회수 절차에 협조합니다.
     </div>
@@ -95,7 +95,7 @@
     <input type="text" id="gnu-website" name="website" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off" />
 
     <p class="notice" style="margin-top:16px">
-      승인·배정 결과와 접속 링크는 자동 메일이 아니라 담당자가 직접 안내합니다. 접수번호를 보관해 주세요.
+      승인·배정 후 담당자가 입력하신 이메일로 팀 워크스페이스 초대를 보냅니다. 접수번호를 보관해 주세요.
     </p>
 
     <div style="margin-top:16px"><button type="button" class="btn" id="gnu-submit">신청하기</button></div>
@@ -236,7 +236,7 @@
           '<p style="font-size:14px;line-height:1.7;margin:0">' +
           '접수번호: <strong>' + d.id + '</strong><br />대여기간: ' + (d.period || '-') + '<br />' +
           '연락 이메일: <strong>' + email + '</strong><br /><br />' +
-          '관리자 승인·배정이 끝나면 담당자가 접속 링크를 직접 안내해 드립니다. 자동 안내 메일은 발송되지 않으니 접수번호를 꼭 보관해 주세요.</p>'
+          '관리자 승인·배정이 끝나면 입력하신 이메일로 팀 워크스페이스 초대 메일이 갑니다. 접수번호를 꼭 보관해 주세요.</p>'
         );
       })
       .catch(function () {

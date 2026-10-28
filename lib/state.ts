@@ -58,7 +58,7 @@ export async function transitionAssignment(opts: {
 
   const patch = { ...(opts.patch ?? {}), status: opts.to, updated_at: new Date().toISOString() }
   // 조건부 갱신(낙관적 잠금): 읽은 뒤 다른 처리가 먼저 상태를 바꿨으면 0행 → false.
-  // 동시 자동 배정·장애 대체가 같은 건을 두 번 처리해 좌석이 고아가 되는 것을 막는다.
+  // 동시 자동 배정·장애 대체가 같은 건을 두 번 처리해 계정이 고아가 되는 것을 막는다.
   const { data: updated, error: upErr } = await db()
     .from('assignments')
     .update(patch)
@@ -112,11 +112,11 @@ export async function transitionAccount(opts: {
   return true
 }
 
-// --- 좌석 선점 (R14·R27) ------------------------------------------------------
+// --- 계정 선점 (R14·R27) ------------------------------------------------------
 
 /**
- * 좌석 선점: 「가용」이고 아무 배정에도 연결되지 않은 좌석만 「배정」으로 바꾸고 배정ID 를 건다.
- * 한 번의 조건부 UPDATE 라 동시에 두 처리가 같은 좌석을 잡을 수 없다. 성공 시에만 로그.
+ * 계정 선점: 「가용」이고 아무 배정에도 연결되지 않은 계정만 「배정」으로 바꾸고 배정ID 를 건다.
+ * 한 번의 조건부 UPDATE 라 동시에 두 처리가 같은 계정을 잡을 수 없다. 성공 시에만 로그.
  */
 export async function claimAccount(opts: {
   id: string
@@ -143,7 +143,7 @@ export async function claimAccount(opts: {
   return true
 }
 
-/** 선점 해제: 이 배정이 잡아 둔 「배정」 좌석만 「가용」으로 되돌린다(다른 배정의 좌석은 건드리지 않음). */
+/** 선점 해제: 이 배정이 잡아 둔 「배정」 계정만 「가용」으로 되돌린다(다른 배정의 계정은 건드리지 않음). */
 export async function releaseClaim(opts: { id: string; assignmentId: string; actor: string; reason: string }): Promise<boolean> {
   const { data, error } = await db()
     .from('accounts')
