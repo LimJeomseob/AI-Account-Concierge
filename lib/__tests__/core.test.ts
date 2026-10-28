@@ -7,7 +7,6 @@ import { canTransitionAccount, canTransitionAssignment } from '@/lib/state'
 import { toCsv } from '@/lib/report'
 import { applicantCsv, applicantEmails, exportQuery } from '@/lib/ops/export'
 import { acceptanceEnabled } from './integration-guard'
-import { digestErrorLines, mailStopNote } from '@/lib/cron/daily'
 import { classifyMailError } from '@/lib/mail/dispatch'
 import { assignedDaysOf } from '@/lib/assign'
 import { accountStatusOptions, canManuallySetAccount } from '@/lib/transitions'
@@ -198,22 +197,6 @@ describe('통합 테스트 실행 가드 (운영 DB 오실행 방지)', () => {
   })
 })
 
-describe('일일 작업 오류 요약 (R32)', () => {
-  it('오류가 없으면 빈 목록', () => {
-    expect(digestErrorLines([])).toEqual([])
-  })
-  it('오류가 있으면 건수·단계·메시지를 점검 메일 맨 위에 싣는다', () => {
-    const lines = digestErrorLines([
-      { step: '자동 배정', message: 'timeout' },
-      { step: '메일 발송', message: '535 auth' },
-    ])
-    expect(lines[0]).toContain('일일 작업 오류 2건')
-    expect(lines[1]).toBe('  - [자동 배정] timeout')
-    expect(lines[2]).toBe('  - [메일 발송] 535 auth')
-    expect(lines.at(-1)).toBe('')
-  })
-})
-
 describe('메일 오류 분류 (§8 Gmail SMTP)', () => {
   it('인증 실패는 auth — 즉시 중단', () => {
     expect(classifyMailError({ code: 'EAUTH', message: 'Invalid login' })).toBe('auth')
@@ -228,12 +211,6 @@ describe('메일 오류 분류 (§8 Gmail SMTP)', () => {
     expect(classifyMailError('550 5.1.1 The email account that you tried to reach does not exist')).toBe('retry')
     expect(classifyMailError('too many recipients in this message')).toBe('retry')
     expect(classifyMailError({ code: 'ETIMEDOUT', message: 'Connection timeout' })).toBe('retry')
-  })
-  it('발송 중단 사유 표시', () => {
-    expect(mailStopNote(undefined)).toBe('')
-    expect(mailStopNote('locked')).toBe('')
-    expect(mailStopNote('auth')).toContain('GMAIL_APP_PASSWORD')
-    expect(mailStopNote('limit')).toContain('한도')
   })
 })
 

@@ -28,14 +28,11 @@ lib/
 supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql 0004_seat_uniqueness.sql 0005_report_dedup.sql)
 scripts/seed.ts, scripts/import-accounts.ts
 public/signup-snippet.html                        ← GitHub Pages 삽입용
-Dockerfile, .dockerignore                         ← Next.js standalone 이미지
-docker/docker-compose.yml, docker/Caddyfile, docker/cron/, docker/backup.sh
-docker/supabase/(setup.sh apply-migration.sh google-oauth.override.yml)  ← 공식 셀프호스팅 스택 준비
-docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker배포가이드.md
+docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 ```
 
-- 배포 경로는 둘: Vercel + Supabase 클라우드(`docs/배포체크리스트.md`) / 대학 서버 Docker + Supabase 셀프호스팅(`docs/Docker배포가이드.md`).
-  앱 코드는 두 경로에서 동일하며 환경변수 값만 다르다. `SUPABASE_URL`(서버 내부망) 과 `NEXT_PUBLIC_SUPABASE_URL`(브라우저) 을 분리해 둔 이유다.
+- 배포 경로는 Vercel + Supabase 클라우드 하나(`docs/배포체크리스트.md`). Docker 경로는 2026-10-29 삭제.
+  `SUPABASE_URL`(서버) 과 `NEXT_PUBLIC_SUPABASE_URL`(브라우저) 은 보통 같은 값이며, 서버 전용 주소가 따로 있을 때만 다르게 둔다.
 
 ## 규칙 ↔ 구현 대응
 
@@ -49,7 +46,7 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker
 | R7~R11 신청 접수 | `lib/ops/apply.ts`, `app/api/public/apply` |
 | R12·R14 자동 배정 | `lib/assign.ts:planAllocations`, `lib/ops/assignments.ts:autoAssignProgram` |
 | R14-2 배정 풀(접속 링크 등록) | `lib/ops/assignments.ts:availablePool`, `program_availability` 뷰 |
-| R13·R17 승인·반려·취소 | `lib/ops/assignments.ts` |
+| R13·R17 승인·취소 (반려 폐지 2026-10-29) | `lib/ops/assignments.ts` |
 | R16 배정안내 메일(계정명·접속 링크) | 폐지(2026-10-28) — 신청자 자동 메일 없음 |
 | R18 인수 확인 | 폐지(2026-10-28) — 배정 즉시 「사용중」, `acknowledged_at` = 사용개시 |
 | R19 미인수 자동 취소 | 폐지(2026-10-28) |
@@ -59,7 +56,7 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker
 | R23 비밀번호 변경 완료 | 폐지 — R24 ② 체크로 대체 |
 | R24 회수 체크 2개(대화·메모리 삭제 / 팀에서 제거)·재배정 | `lib/ops/assignments.ts:completeReturn` |
 | R25 계정 통계 | `lib/assign.ts:assignedDaysOf`, `lib/ops/accounts.ts:refreshAccountStats` |
-| R26~R28 장애 | `lib/ops/incidents.ts` |
+| R26~R28 장애(정지율 표시만, 경고 폐지) | `lib/ops/incidents.ts` |
 | R29 실적·스냅샷 | `lib/report.ts`, `lib/cron/monthly.ts`, 뷰 `v_report_*`(0005: 사람 단위·취소 제외) |
 | R30 개인정보 파기 | 화면 기능 없음(2026-10-28 제거) — `docs/운영매뉴얼.md` §8 SQL 절차 |
 | R31 로그 | `lib/state.ts:log` |

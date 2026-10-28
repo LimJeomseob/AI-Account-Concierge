@@ -19,7 +19,6 @@ import {
   cancelAssignment,
   completeReturn,
   manualAssign,
-  rejectAssignments,
   setChecklist,
 } from '@/lib/ops/assignments'
 import { importAccounts, parseAccountCsv, setAccessUrl } from '@/lib/ops/accounts'
@@ -44,12 +43,6 @@ export async function approveAction(fd: FormData) {
   await approveAssignments(ids(fd), actor)
   revalidatePath('/admin/assignments')
   revalidatePath('/admin/dashboard')
-}
-
-export async function rejectAction(fd: FormData) {
-  const actor = await requireAdminAction()
-  await rejectAssignments(ids(fd), actor, str(fd, 'reason') || '반려')
-  revalidatePath('/admin/assignments')
 }
 
 export async function cancelAction(fd: FormData) {
@@ -310,8 +303,6 @@ export async function runDailyAction() {
 export async function settingsSaveAction(fd: FormData) {
   const actor = await requireAdminAction()
   const numeric: Array<keyof Settings> = [
-    'account_expiry_alert_days',
-    'suspension_rate_warn',
     'target_headcount',
   ]
   const text: Array<keyof Settings> = [

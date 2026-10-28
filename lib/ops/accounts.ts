@@ -4,7 +4,7 @@
  */
 import 'server-only'
 import { db } from '@/lib/db'
-import { addDays, todayKST } from '@/lib/date'
+import { todayKST } from '@/lib/date'
 import { assignedDaysOf } from '@/lib/assign'
 import { log, transitionAccount } from '@/lib/state'
 import type { Service } from '@/lib/types'
@@ -173,50 +173,4 @@ export async function refreshAccountStats(today: string = todayKST()): Promise<n
     }
   }
   return changed
-}
-
-export interface ExpiryResult {
-  expired: string[]
-  soon: Array<{ id: string; expires_on: string }>
-  /** 만료일이 지났지만 사용중·회수중이라 만료 처리하지 않은 좌석 — 담당자가 회수 후 처리 */
-  overdueInUse: Array<{ id: string; expires_on: string; status: string }>
-}
-
-/**
- * 구독 만료 처리 + D-N 임박 목록 (일일 작업 7단계).
- * 배정·회수중 좌석은 만료로 바꾸지 않는다(연결을 끊으면 신청 건은 「사용중」, 좌석은 「만료」인 불일치가 생김).
- * 대신 overdueInUse 로 돌려 점검 메일·대시보드에 경고한다.
- */
-export async function processExpiries(alertDays: number, today: string = todayKST()): Promise<ExpiryResult> {
-  const { data: accs } = await db()
-    .from('accounts')
-    .select('id, status, expires_on')
-    .not('expires_on', 'is', null)
-
-  const expired: string[] = []
-  const soon: ExpiryResult['soon'] = []
-  const overdueInUse: ExpiryResult['overdueInUse'] = []
-  const limitStr = addDays(today, alertDays)
-
-  for (const a of accs ?? []) {
-    if (!a.expires_on) continue
-    if (a.expires_on < today) {
-      if (a.status === '배정' || a.status === '회수중') {
-        overdueInUse.push({ id: a.id, expires_on: a.expires_on, status: a.status })
-      } else if (a.status !== '만료') {
-        const ok = await transitionAccount({
-          id: a.id,
-          to: '만료',
-          actor: 'system',
-          action: 'account.expire',
-          expect: ['가용', '정지'],
-          detail: { expires_on: a.expires_on },
-        })
-        if (ok) expired.push(a.id)
-      }
-    } else if (a.expires_on <= limitStr && a.status !== '만료') {
-      soon.push({ id: a.id, expires_on: a.expires_on })
-    }
-  }
-  return { expired, soon, overdueInUse }
 }

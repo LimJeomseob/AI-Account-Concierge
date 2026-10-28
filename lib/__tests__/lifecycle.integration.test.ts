@@ -125,7 +125,6 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     await db().from('account_secrets').delete().like('account_id', `${RUN}%`)
     await db().from('accounts').delete().like('id', `${RUN}%`)
     await db().from('programs').delete().eq('id', PROG)
-    await db().from('mail_queue').delete().eq('ref_id', today).eq('kind', 'digest')
   }, 60_000)
 
   it('1. 신청 — 접수번호 발급, 접수안내 메일 없음, 중복 신청 거부 (R7~R11)', async () => {
@@ -216,7 +215,7 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     ])
   })
 
-  it('4. 대여 종료(일일 작업) — 회수중 전환, 알림, 점검 메일 (R20·R22·R32)', async () => {
+  it('4. 대여 종료(일일 작업) — 회수중 전환, 알림 (R20·R22·R32)', async () => {
     const yesterday = M.date.addDays(today, -1)
     await M.db.db().from('assignments').update({ rent_end: yesterday }).eq('id', ids.a1)
 
@@ -228,7 +227,6 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     const { data: row } = await M.db.db().from('assignments').select('status').eq('id', ids.a1).single()
     const { data: acc } = await M.db.db().from('accounts').select('status, alert, current_assignment_id').eq('id', SEAT_OK).single()
     const alerts = (await M.alerts.listAlerts()).filter((a) => a.assignment_id === ids.a1)
-    const { data: digest } = await M.db.db().from('mail_queue').select('body_text').eq('kind', 'digest').eq('ref_id', today).maybeSingle()
     expect(row?.status).toBe('회수중')
     expect(acc?.status).toBe('회수중')
     expect(alerts).toHaveLength(1)
@@ -238,7 +236,6 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
       `배정 ${ids.a1}: ${row?.status} · 좌석 ${SEAT_OK}: ${acc?.status}, current=${acc?.current_assignment_id}`,
       `계정 알림: ${acc?.alert}`,
       `alerts: [${alerts[0]?.category}] ${alerts[0]?.guide}`,
-      digest ? `점검 메일 「회수 대상」 포함 여부: ${digest.body_text?.includes(ids.a1) ? '포함' : '미포함(수신 관리자 미설정 시 생략)'}` : '점검 메일: 수신 관리자(admin_emails) 미설정으로 생성 안 됨',
     ])
   })
 

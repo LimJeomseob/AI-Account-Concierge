@@ -196,24 +196,6 @@ export async function approveAssignments(
   return { approved, assigned }
 }
 
-/** R17: 반려 */
-export async function rejectAssignments(ids: string[], actor: string, reason: string): Promise<number> {
-  let n = 0
-  for (const id of ids) {
-    const ok = await transitionAssignment({
-      id,
-      to: '반려',
-      actor,
-      action: 'assignment.reject',
-      expect: ['신청', '승인'],
-      patch: { note: reason },
-      detail: { reason },
-    })
-    if (ok) n += 1
-  }
-  return n
-}
-
 /**
  * R17: 취소. 좌석을 쥐고 있던 건은 「회수중」(회수 체크리스트 R24 를 거쳐야 좌석이 풀림), 아니면 「취소」.
  * 배정 전이를 먼저 하고(조건부), 좌석은 이 건에 연결돼 있을 때만 회수중으로 옮긴다.

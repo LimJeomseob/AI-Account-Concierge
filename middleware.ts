@@ -9,7 +9,7 @@ import { AUTH_COOKIE_NAME } from '@/lib/auth-cookie'
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req })
 
-  // 서버에서는 내부망 주소로 접근한다 (Docker: http://kong:8000).
+  // 서버 전용 주소(SUPABASE_URL)가 있으면 쓰고, 없으면 공개 주소. Vercel 에서는 보통 같은 값이다.
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !key) return res

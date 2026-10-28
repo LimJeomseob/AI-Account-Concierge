@@ -47,22 +47,6 @@ export default async function DashboardPage() {
   const alerts = await listAlerts()
   const rate = await suspensionRate()
 
-  const { data: expiring } = await db()
-    .from('accounts')
-    .select('id, service, expires_on, status')
-    .not('expires_on', 'is', null)
-    .gte('expires_on', today)
-    .lte('expires_on', addDays(today, s.account_expiry_alert_days))
-    .order('expires_on')
-
-  // 만료일이 지났는데 사용중·회수중인 좌석 — 일일 작업이 자동 만료하지 않으므로 여기서 경고
-  const { data: expiredInUse } = await db()
-    .from('accounts')
-    .select('id, service, expires_on, status')
-    .lt('expires_on', today)
-    .in('status', ['배정', '회수중'])
-    .order('expires_on')
-
   // 일일 작업 상태 (R32) — 마지막 실행 결과의 오류, 마지막 성공 시각
   const { data: lastRun } = await db()
     .from('logs')
@@ -114,7 +98,7 @@ export default async function DashboardPage() {
 
       {(lastRunErrors.length > 0 || cronStale) && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {cronStale && <p>⚠ 일일 작업이 26시간 넘게 성공하지 못했습니다. Cron 설정(Vercel Cron·Docker cron 컨테이너)을 확인해 주세요.</p>}
+          {cronStale && <p>⚠ 일일 작업이 26시간 넘게 성공하지 못했습니다. Vercel Cron 설정·실행 로그를 확인해 주세요.</p>}
           {lastRunErrors.length > 0 && (
             <>
               <p>⚠ 마지막 일일 작업에서 {lastRunErrors.length}개 단계가 실패했습니다. 「일일 작업 지금 실행」으로 다시 시도할 수 있습니다.</p>
@@ -140,16 +124,11 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="정지율(%)" value={rate} warn={rate > s.suspension_rate_warn} />
+        <Stat label="정지율(%)" value={rate} />
         <Stat label="메일 대기" value={mailPending} />
         <Stat label="메일 실패" value={mailFailed} warn={mailFailed > 0} />
       </div>
 
-      {rate > s.suspension_rate_warn && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          ⚠ 정지율이 경고 임계값({s.suspension_rate_warn}%)을 넘었습니다. 업체 협의가 필요합니다.
-        </div>
-      )}
 
       <Card
         title={`회수 대상 (${alerts.length})`}
@@ -180,44 +159,6 @@ export default async function DashboardPage() {
         )}
       </Card>
 
-      {(expiredInUse ?? []).length > 0 && (
-        <Card title={`만료일 경과·사용중 (${expiredInUse!.length})`}>
-          <p className="mb-2 text-xs text-red-700">
-            구독 만료일이 지났지만 사용중·회수중이라 자동 만료하지 않은 좌석입니다. 회수를 완료하면 다음 일일 작업에서 만료 처리됩니다.
-          </p>
-          <Table head={['계정ID', '서비스', '만료일', '상태']}>
-            {expiredInUse!.map((a) => (
-              <tr key={a.id}>
-                <Td>{a.id}</Td>
-                <Td>{a.service}</Td>
-                <Td>{a.expires_on}</Td>
-                <Td>
-                  <Badge value={a.status} />
-                </Td>
-              </tr>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      <Card title={`구독 만료 임박 (D-${s.account_expiry_alert_days})`}>
-        {(expiring ?? []).length === 0 ? (
-          <p className="text-sm text-slate-500">임박한 계정이 없습니다.</p>
-        ) : (
-          <Table head={['계정ID', '서비스', '만료일', '상태']}>
-            {(expiring ?? []).map((a) => (
-              <tr key={a.id}>
-                <Td>{a.id}</Td>
-                <Td>{a.service}</Td>
-                <Td>{a.expires_on}</Td>
-                <Td>
-                  <Badge value={a.status} />
-                </Td>
-              </tr>
-            ))}
-          </Table>
-        )}
-      </Card>
     </>
   )
 }
