@@ -7,6 +7,7 @@ import { canTransitionAccount, canTransitionAssignment } from '@/lib/state'
 import { toCsv } from '@/lib/report'
 import { applicantCsv, applicantEmails, exportQuery } from '@/lib/ops/export'
 import { acceptanceEnabled } from './integration-guard'
+import { digestErrorLines } from '@/lib/cron/daily'
 import { sign, verify } from '@/lib/token'
 import { normalizeUrl, parseAccountCsv, splitCsvLine } from '@/lib/ops/accounts'
 
@@ -190,5 +191,21 @@ describe('통합 테스트 실행 가드 (운영 DB 오실행 방지)', () => {
     expect(acceptanceEnabled({ ...base })).toBe(false)
     expect(acceptanceEnabled({ ...base, ACCEPTANCE_DB_HOST: 'prod.supabase.co' })).toBe(false)
     expect(acceptanceEnabled({ ...base, ACCEPTANCE_DB_HOST: 'abcd.supabase.co', ACCEPTANCE_CONFIRM: 'no' })).toBe(false)
+  })
+})
+
+describe('일일 작업 오류 요약 (R32)', () => {
+  it('오류가 없으면 빈 목록', () => {
+    expect(digestErrorLines([])).toEqual([])
+  })
+  it('오류가 있으면 건수·단계·메시지를 점검 메일 맨 위에 싣는다', () => {
+    const lines = digestErrorLines([
+      { step: '자동 배정', message: 'timeout' },
+      { step: '메일 발송', message: '535 auth' },
+    ])
+    expect(lines[0]).toContain('일일 작업 오류 2건')
+    expect(lines[1]).toBe('  - [자동 배정] timeout')
+    expect(lines[2]).toBe('  - [메일 발송] 535 auth')
+    expect(lines.at(-1)).toBe('')
   })
 })

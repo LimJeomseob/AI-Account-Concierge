@@ -1,22 +1,18 @@
 /** POST/GET /api/cron/monthly (PRD §11, R29) */
 import { runMonthly } from '@/lib/cron/monthly'
+import { cronAuthorized } from '@/lib/cron/auth'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET
-  if (!secret) return false
-  return req.headers.get('authorization') === `Bearer ${secret}`
-}
-
 async function handle(req: Request) {
-  if (!authorized(req)) return Response.json({ ok: false, msg: '인증 실패' }, { status: 401 })
+  if (!cronAuthorized(req)) return Response.json({ ok: false, msg: '인증 실패' }, { status: 401 })
   try {
     const result = await runMonthly('system')
     return Response.json({ ok: true, result })
   } catch (e) {
-    return Response.json({ ok: false, msg: (e as Error).message }, { status: 500 })
+    console.error('[cron.monthly] 실패:', (e as Error).message)
+    return Response.json({ ok: false, msg: '월간 스냅샷 실패 — 서버 로그를 확인하세요.' }, { status: 500 })
   }
 }
 

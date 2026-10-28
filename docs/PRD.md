@@ -381,7 +381,7 @@ UI 원칙: 한글 라벨, shadcn `DataTable`(정렬·필터·다중 선택), 상
 ```json
 { "crons": [
   { "path": "/api/cron/daily",   "schedule": "0 0 * * *" },
-  { "path": "/api/cron/monthly", "schedule": "0 0 1 * *" }
+  { "path": "/api/cron/monthly", "schedule": "10 0 1 * *" }
 ] }
 ```
 (UTC 00:00 = KST 09:00. Hobby 플랜은 ±59분 오차, 하루 1회 제한 — 본 설계는 하루 1회로 충분.)
