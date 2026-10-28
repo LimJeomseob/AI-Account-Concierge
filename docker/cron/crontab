@@ -1,4 +1,5 @@
 # 분 시 일 월 요일   (TZ=Asia/Seoul)
-# PRD §11: 일일 작업 09:00, 월간 스냅샷 매월 1일 (겹치지 않게 09:05)
-0 9 * * *   curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/daily   >> /proc/1/fd/1 2>&1
-5 9 1 * *   curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/monthly >> /proc/1/fd/1 2>&1
+# PRD §11: 일일 작업 09:00, 월간 스냅샷 매월 1일 (겹치지 않게 09:10)
+# 실패(앱 다운·단계 오류 500) 시 5분 뒤 1회 재시도. 일일 작업은 멱등이고 잠금이 있어 중복 실행돼도 안전하다(R32).
+0 9 * * *   (curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/daily   || (sleep 300 && curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/daily))   >> /proc/1/fd/1 2>&1
+10 9 1 * *  (curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/monthly || (sleep 300 && curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" http://app:3000/api/cron/monthly)) >> /proc/1/fd/1 2>&1

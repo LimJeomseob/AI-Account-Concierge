@@ -39,10 +39,10 @@ cp .env.example .env.local     # 값 채우기
 ## 초기 구축
 
 ```bash
-# 1) 스키마 — 0001 → 0002 → 0003 순서로 모두 적용 (각 파일 멱등)
+# 1) 스키마 — 0001 부터 번호 순서로 모두 적용 (각 파일 멱등, 이미 적용한 DB 에 다시 돌려도 안전)
 #    0002·0003 은 enum ADD VALUE 때문에 문장별 커밋이 필요하므로 psql 로 실행한다
 #    (SQL Editor 는 한 트랜잭션으로 묶을 수 있어 0001 에만 안전)
-for f in supabase/migrations/000{1,2,3}_*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 < "$f"; done
+for f in supabase/migrations/0*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 < "$f"; done
 
 # 2) 시드 (설정·메일 템플릿·최초 관리자 [+ 프로그램 24개, 샘플 계정])
 npx tsx scripts/seed.ts --programs --sample-accounts

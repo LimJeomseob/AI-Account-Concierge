@@ -1,7 +1,9 @@
 /** 대시보드 (PRD §7-2) */
 import Link from 'next/link'
 import { db } from '@/lib/db'
-import { todayKST } from '@/lib/date'
+import { nowKSTText, todayKST } from '@/lib/date'
+import { lastOk } from '@/lib/lock'
+import type { DailyError } from '@/lib/cron/daily'
 import { getSettings } from '@/lib/settings'
 import { listAlerts } from '@/lib/alerts'
 import { suspensionRate } from '@/lib/ops/incidents'
@@ -55,12 +57,28 @@ export default async function DashboardPage() {
     .lte('expires_on', limit.toISOString().slice(0, 10))
     .order('expires_on')
 
+  // 일일 작업 상태 (R32) — 마지막 실행 결과의 오류, 마지막 성공 시각
+  const { data: lastRun } = await db()
+    .from('logs')
+    .select('at, detail')
+    .eq('action', 'cron.daily.done')
+    .order('at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const lastRunErrors = ((lastRun?.detail as { errors?: DailyError[] } | null)?.errors ?? []) as DailyError[]
+  const lastOkAt = await lastOk('cron.daily')
+  const cronStale = lastOkAt !== null && Date.now() - lastOkAt > 26 * 60 * 60 * 1000
+
   return (
     <>
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[var(--gnu-navy)]">오늘 할 일 ({today})</h1>
-          <p className="text-sm text-slate-500">매일 09:00(KST) 자동 작업이 아래 항목을 처리합니다.</p>
+          <p className="text-sm text-slate-500">
+            매일 09:00(KST) 자동 작업이 아래 항목을 처리합니다. 마지막 실행{' '}
+            {lastRun ? nowKSTText(new Date(lastRun.at)) : '기록 없음'} · 마지막 성공{' '}
+            {lastOkAt ? nowKSTText(new Date(lastOkAt)) : '기록 없음'}
+          </p>
         </div>
         <div className="flex gap-2">
           <form action={autoAssignAction}>
@@ -71,6 +89,24 @@ export default async function DashboardPage() {
           </form>
         </div>
       </header>
+
+      {(lastRunErrors.length > 0 || cronStale) && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {cronStale && <p>⚠ 일일 작업이 26시간 넘게 성공하지 못했습니다. Cron 설정(Vercel Cron·Docker cron 컨테이너)을 확인해 주세요.</p>}
+          {lastRunErrors.length > 0 && (
+            <>
+              <p>⚠ 마지막 일일 작업에서 {lastRunErrors.length}개 단계가 실패했습니다. 「일일 작업 지금 실행」으로 다시 시도할 수 있습니다.</p>
+              <ul className="mt-1 list-disc pl-5 text-xs">
+                {lastRunErrors.map((e) => (
+                  <li key={e.step}>
+                    [{e.step}] {e.message}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label="승인 대기" value={pendingApproval} warn={pendingApproval > 0} />

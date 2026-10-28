@@ -26,7 +26,7 @@ PRD §13 「Vercel Hobby 비상업 조건 불가 시 대학 서버 Docker 배포
               │  rest(DB API) · db(Postgres) · studio  │
               └────────────────────────────────────┘
    ┌─────────┐  매일 09:00 KST → http://app:3000/api/cron/daily
-   │  cron   │  매월 1일 09:05 → /api/cron/monthly
+   │  cron   │  매월 1일 09:10 → /api/cron/monthly
    └─────────┘
 ```
 

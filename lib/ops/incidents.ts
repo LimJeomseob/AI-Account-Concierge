@@ -7,7 +7,7 @@ import { todayKST } from '@/lib/date'
 import { periodFor } from '@/lib/assign'
 import { nextAssignmentId } from '@/lib/ids'
 import { queueAdminMail } from '@/lib/mail/queue'
-import { log, transitionAccount, transitionAssignment } from '@/lib/state'
+import { claimAccount, log, transitionAccount, transitionAssignment } from '@/lib/state'
 import { moveAccountToReturning } from '@/lib/ops/assignments'
 import type { IncidentType, Program } from '@/lib/types'
 
@@ -93,43 +93,16 @@ export async function replaceAccount(
   const { data: inc } = await db().from('incidents').select('*').eq('id', incidentId).single()
   if (!inc) throw new Error('장애 건이 없습니다.')
   if (!inc.assignment_id) throw new Error('연결된 배정이 없습니다.')
+  // 멱등: 이미 대체한 장애를 다시 실행하면 새 배정이 또 생기므로 막는다
+  if (inc.status === '완료' || inc.replacement_account_id) throw new Error('이미 처리된 장애입니다.')
 
   const { data: old } = await db().from('assignments').select('*').eq('id', inc.assignment_id).single()
   if (!old) throw new Error('배정 정보를 찾을 수 없습니다.')
+  if (!['사용중', '배정'].includes(old.status)) {
+    throw new Error(`원 배정이 「${old.status}」 상태라 대체할 수 없습니다(사용중 건만 대체).`)
+  }
   const service = old.service
   if (!service) throw new Error('서비스가 지정되지 않은 배정입니다.')
-
-  // 대체 계정 선택: 예비 우선
-  const { data: candidates } = await db()
-    .from('accounts')
-    .select('id, kind, expires_on')
-    .eq('status', '가용')
-    .eq('service', service)
-    .order('kind', { ascending: true }) // 예비 < 운영 (가나다)
-  // 접속 링크가 등록된 좌석만 대체 후보 (R14-2·R27)
-  const { data: okSecrets } = await db()
-    .from('account_secrets')
-    .select('account_id')
-    .not('access_url', 'is', null)
-  const okIds = new Set((okSecrets ?? []).map((s) => s.account_id))
-
-  const spare = (candidates ?? []).filter((c) => okIds.has(c.id))
-  const pick = spare.find((c) => c.kind === '예비') ?? spare[0]
-  if (!pick) throw new Error(`대체할 ${service} 가용 계정이 없습니다.`)
-
-  // 기존 배정 종료 처리
-  if (old.account_id) {
-    const { data: acc } = await db().from('accounts').select('status').eq('id', old.account_id).single()
-    if (acc?.status !== '정지') await moveAccountToReturning(old.account_id, old.id, actor)
-  }
-  await transitionAssignment({
-    id: old.id,
-    to: '회수중',
-    actor,
-    action: 'assignment.incident.replace',
-    patch: { note: `장애(${inc.type})로 대체 배정 — ${today}` },
-    detail: { incident_id: incidentId },
-  })
 
   // 대여기간 승계 (없으면 프로그램 기준으로 재계산)
   let rentStart = old.rent_start
@@ -141,36 +114,82 @@ export async function replaceAccount(
     rentEnd = period?.end ?? today
   }
 
-  const newId = await nextAssignmentId()
-  const { error: insErr } = await db().from('assignments').insert({
-    id: newId,
-    program_id: old.program_id,
-    user_id: old.user_id,
-    name: old.name,
-    email: old.email,
-    service_wish: old.service_wish,
-    account_id: pick.id,
-    service,
-    status: '사용중', // 배정 즉시 사용 개시 (인수 확인 폐지)
-    acknowledged_at: new Date().toISOString(),
-    applied_at: old.applied_at,
-    edu_watched_at: old.edu_watched_at,
-    approved_on: old.approved_on,
-    approved_by: old.approved_by,
-    assigned_on: today,
-    rent_start: rentStart,
-    rent_end: rentEnd,
-    note: `장애 대체 (원 배정 ${old.id})`,
-  })
-  if (insErr) throw new Error(insErr.message)
+  // 대체 후보: 가용 ∧ 같은 서비스 ∧ 접속 링크 등록(R14-2·R27) ∧ 대여종료일까지 구독 유지. 예비 우선
+  const { data: candidates } = await db()
+    .from('accounts')
+    .select('id, kind, expires_on')
+    .eq('status', '가용')
+    .is('current_assignment_id', null)
+    .eq('service', service)
+  const { data: okSecrets } = await db()
+    .from('account_secrets')
+    .select('account_id')
+    .not('access_url', 'is', null)
+  const okIds = new Set((okSecrets ?? []).map((s) => s.account_id))
+  const ordered = (candidates ?? [])
+    .filter((c) => okIds.has(c.id) && (c.expires_on === null || c.expires_on >= rentEnd))
+    .sort((a, b) => (a.kind === b.kind ? a.id.localeCompare(b.id) : a.kind === '예비' ? -1 : 1))
+  if (ordered.length === 0) throw new Error(`대체할 ${service} 가용 계정이 없습니다.`)
 
-  await transitionAccount({
-    id: pick.id,
-    to: '배정',
+  // 새 배정을 만든 뒤 좌석을 조건부로 선점한다. 선점에 실패하면(다른 처리가 먼저 가져감) 새 배정을 지우고 다음 후보.
+  let newId = ''
+  let pick: { id: string } | null = null
+  for (const c of ordered) {
+    const id = await nextAssignmentId()
+    const { error: insErr } = await db().from('assignments').insert({
+      id,
+      program_id: old.program_id,
+      user_id: old.user_id,
+      name: old.name,
+      email: old.email,
+      service_wish: old.service_wish,
+      account_id: c.id,
+      service,
+      status: '사용중', // 배정 즉시 사용 개시 (인수 확인 폐지)
+      acknowledged_at: new Date().toISOString(),
+      applied_at: old.applied_at,
+      edu_watched_at: old.edu_watched_at,
+      approved_on: old.approved_on,
+      approved_by: old.approved_by,
+      assigned_on: today,
+      rent_start: rentStart,
+      rent_end: rentEnd,
+      note: `장애 대체 (원 배정 ${old.id})`,
+    })
+    if (insErr) {
+      // 좌석 유일 인덱스(0004) 위반 = 이 좌석이 이미 다른 활성 배정에 있음 → 다음 후보
+      if (/assignments_active_account_uq/.test(insErr.message)) continue
+      throw new Error(insErr.message)
+    }
+    const claimed = await claimAccount({
+      id: c.id,
+      assignmentId: id,
+      actor,
+      action: 'account.assign.replace',
+      detail: { incident_id: incidentId, from_assignment: old.id },
+    })
+    if (claimed) {
+      newId = id
+      pick = c
+      break
+    }
+    await db().from('assignments').delete().eq('id', id)
+  }
+  if (!pick) throw new Error(`대체할 ${service} 가용 계정을 잡지 못했습니다. 잠시 후 다시 시도해 주세요.`)
+
+  // 기존 배정 종료 처리 (새 좌석을 확보한 뒤에 한다 — 실패 시 원 배정이 그대로 남도록)
+  if (old.account_id) {
+    const { data: acc } = await db().from('accounts').select('status').eq('id', old.account_id).single()
+    if (acc?.status !== '정지') await moveAccountToReturning(old.account_id, old.id, actor)
+  }
+  await transitionAssignment({
+    id: old.id,
+    to: '회수중',
     actor,
-    action: 'account.assign.replace',
-    patch: { current_assignment_id: newId },
-    detail: { incident_id: incidentId, from_assignment: old.id },
+    action: 'assignment.incident.replace',
+    expect: ['사용중', '배정'],
+    patch: { note: `장애(${inc.type})로 대체 배정 — ${today}` },
+    detail: { incident_id: incidentId, new_assignment: newId },
   })
 
   await db()
