@@ -71,12 +71,9 @@ describe('token (§8)', () => {
 })
 
 describe('alertText (R22)', () => {
-  it('만료·미인수·체크완료 문구', () => {
+  it('만료·체크완료 문구 (미인수 문구는 인수 확인 폐지로 제거)', () => {
     expect(alertText({ category: '대여기간 만료', rentEnd: '2026-09-01', elapsedDays: 3, checklistDone: false })).toBe(
       '⚠ 대여기간 만료(2026-09-01, D+3) — 대화·메모리 삭제 후 팀에서 제거 필요',
-    )
-    expect(alertText({ category: '인수기한 초과', rentEnd: null, elapsedDays: 0, checklistDone: false })).toBe(
-      '⚠ 인수기한 초과 — 회수 필요',
     )
     expect(alertText({ category: '대여기간 만료', rentEnd: '2026-09-01', elapsedDays: 3, checklistDone: true })).toBe(
       '회수 체크리스트 완료 — 회수 완료 처리 필요',
@@ -87,7 +84,8 @@ describe('alertText (R22)', () => {
 describe('state (§5)', () => {
   it('허용된 전이만 통과한다', () => {
     expect(canTransitionAssignment('신청', '승인')).toBe(true)
-    expect(canTransitionAssignment('배정', '사용중')).toBe(true)
+    expect(canTransitionAssignment('승인', '사용중')).toBe(true) // 배정 즉시 사용중 (인수 확인 폐지)
+    expect(canTransitionAssignment('배정', '사용중')).toBe(true) // 구 데이터 호환
     expect(canTransitionAssignment('회수완료', '배정')).toBe(false)
     expect(canTransitionAssignment('신청', '사용중')).toBe(false)
     expect(canTransitionAccount('가용', '배정')).toBe(true)

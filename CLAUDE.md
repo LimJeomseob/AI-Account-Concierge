@@ -14,7 +14,7 @@
 
 ```
 app/
-  (public)/ack, (public)/incident, (public)/apply
+  (public)/incident, (public)/apply
   admin/(protected)/(dashboard|assignments|programs|accounts|users|incidents|reports|settings|logs)
   admin/login, admin/denied, admin/actions.ts     ← Server Actions
   api/public/programs, api/public/apply
@@ -50,9 +50,9 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker
 | R12·R14 자동 배정 | `lib/assign.ts:planAllocations`, `lib/ops/assignments.ts:autoAssignProgram` |
 | R14-2 배정 풀(접속 링크 등록) | `lib/ops/assignments.ts:availablePool`, `program_availability` 뷰 |
 | R13·R17 승인·반려·취소 | `lib/ops/assignments.ts` |
-| R16 배정안내 메일(계정명·접속 링크) | `lib/mail/queue.ts:queueAssignmentMail` |
-| R18 인수 확인 | `app/(public)/ack`, `lib/ops/assignments.ts:acknowledge` |
-| R19 미인수 자동 취소 | `lib/ops/assignments.ts:expireUnacknowledged` |
+| R16 배정안내 메일(계정명·접속 링크) | 폐지(2026-10-28) — 신청자 자동 메일 없음 |
+| R18 인수 확인 | 폐지(2026-10-28) — 배정 즉시 「사용중」, `acknowledged_at` = 사용개시 |
+| R19 미인수 자동 취소 | 폐지(2026-10-28) |
 | R20 대여 종료 | `lib/ops/assignments.ts:endExpiredRentals` |
 | R21 비밀번호 생성 | 폐지 — 접근 차단은 R24 ②「팀에서 제거」 체크 |
 | R22 알림 | `lib/alerts.ts` |

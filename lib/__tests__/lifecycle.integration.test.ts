@@ -1,6 +1,7 @@
 /**
- * 신청 → 접수 → 승인·배정 → 인수 → 대여 종료 → 회수 → 재배정 생애주기 검수 (가상 시뮬레이션).
- * 각 단계의 DB 상태·메일 본문·로그를 출력해 사람이 검수할 수 있게 한다.
+ * 신청 → 접수 → 승인·배정(즉시 사용중) → 대여 종료 → 회수 → 재배정 생애주기 검수 (가상 시뮬레이션).
+ * 각 단계의 DB 상태·로그를 출력해 사람이 검수할 수 있게 한다.
+ * 2026-10-28: 신청자 자동 메일(R16)·인수 확인(R18)·미인수 자동 취소(R19) 폐지 반영.
  *
  * 실행:
  *   ACCEPTANCE_CONFIRM=yes SIM_EMAIL=eros4424@gmail.com npm run test:acceptance -- lifecycle
@@ -122,7 +123,7 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     await db().from('mail_queue').delete().eq('ref_id', today).eq('kind', 'digest')
   }, 60_000)
 
-  it('1. 신청 — 접수번호 발급, 접수안내 메일 대기열, 중복 신청 거부 (R7~R11)', async () => {
+  it('1. 신청 — 접수번호 발급, 접수안내 메일 없음, 중복 신청 거부 (R7~R11)', async () => {
     const res = await M.apply.applyForAccount({
       programId: PROG,
       name: '검수 신청자',
@@ -137,21 +138,21 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     ids.a1 = res.id
 
     const { data: row } = await M.db.db().from('assignments').select('status, name, email, service_wish, rent_start, rent_end').eq('id', res.id).single()
-    const { data: mail } = await M.db.db().from('mail_queue').select('to_email, subject, body_text, status').eq('ref_id', res.id).eq('kind', 'intake').single()
+    const { count: mails } = await M.db.db().from('mail_queue').select('id', { count: 'exact', head: true }).eq('ref_id', res.id).eq('kind', 'intake')
     expect(row?.status).toBe('신청')
-    expect(mail?.to_email).toBe(APPLICANT)
+    expect(mails).toBe(0)
 
     const dup = await M.apply.applyForAccount({ programId: PROG, name: '검수 신청자', affiliation: 'AI융합원', type: '교원', email: APPLICANT.toUpperCase() })
     expect(dup.ok).toBe(false)
 
     step('1. 신청 접수', [
       `접수번호 ${res.id} · 상태 ${row?.status} · 희망 ${row?.service_wish} · 대여기간 표시 「${res.period}」`,
-      `접수안내 메일 → ${mail?.to_email} (대기열 ${mail?.status}) 제목: ${mail?.subject}`,
+      `접수안내 메일 대기열 ${mails}건 (자동 메일 폐지)`,
       `중복 신청(대문자 이메일) → 거부: ${!dup.ok ? dup.msg : ''}`,
     ])
   })
 
-  it('2. 승인 → 자동 배정 — 링크 있는 좌석만 배정, 배정안내 메일에 접속 링크 (R13·R14·R16)', async () => {
+  it('2. 승인 → 자동 배정 — 링크 있는 좌석만 배정, 즉시 사용중, 안내 메일 없음 (R13·R14)', async () => {
     const pool = await M.assignments.availablePool()
     expect(pool.map((p) => p.id)).toContain(SEAT_OK)
     expect(pool.map((p) => p.id)).not.toContain(SEAT_NOLINK)
@@ -159,23 +160,20 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     const r = await M.assignments.approveAssignments([ids.a1], 'admin@gnuxai.ac.kr', today)
     expect(r.assigned).toContain(ids.a1)
 
-    const { data: row } = await M.db.db().from('assignments').select('status, account_id, service, rent_start, rent_end, notified_at').eq('id', ids.a1).single()
+    const { data: row } = await M.db.db().from('assignments').select('status, account_id, service, rent_start, rent_end, acknowledged_at').eq('id', ids.a1).single()
     const { data: acc } = await M.db.db().from('accounts').select('status, current_assignment_id').eq('id', SEAT_OK).single()
-    const { data: mail } = await M.db.db().from('mail_queue').select('to_email, subject, body_text').eq('ref_id', ids.a1).eq('kind', 'assignment').single()
-    expect(row?.status).toBe('배정')
+    const { count: mails } = await M.db.db().from('mail_queue').select('id', { count: 'exact', head: true }).eq('ref_id', ids.a1).eq('kind', 'assignment')
+    expect(row?.status).toBe('사용중') // 배정 즉시 사용 개시 (인수 확인 폐지)
+    expect(row?.acknowledged_at).toBeTruthy()
     expect(row?.account_id).toBe(SEAT_OK)
     expect(acc?.status).toBe('배정')
-    expect(mail?.body_text).toContain(ACCESS_URL)
-    expect(mail?.body_text).not.toContain('비밀번호:')
+    expect(mails).toBe(0)
 
     step('2. 승인·자동 배정', [
       `배정 풀: ${pool.map((p) => p.id).join(', ')}  (${SEAT_NOLINK} 는 링크 없어 제외)`,
       `${ids.a1} → 좌석 ${row?.account_id} (${row?.service}) · 상태 ${row?.status} · 대여 ${row?.rent_start} ~ ${row?.rent_end}`,
       `좌석 ${SEAT_OK}: ${acc?.status}, current=${acc?.current_assignment_id}`,
-      `배정안내 메일 → ${mail?.to_email} · 발송기록 notified_at=${row?.notified_at ? '기록됨' : '없음'}`,
-      '--- 메일 본문 ---',
-      ...String(mail?.body_text ?? '').split('\n').map((l: string) => `   ${l}`),
-      '--- 끝 ---',
+      `사용개시 acknowledged_at=${row?.acknowledged_at} · 배정안내 메일 대기열 ${mails}건 (자동 메일 폐지)`,
     ])
   })
 
@@ -202,19 +200,14 @@ describe.skipIf(!enabled)(`생애주기 검수 — 신청자 ${APPLICANT}`, () =
     ])
   })
 
-  it('3. 인수 확인 — 서명 링크 검증, 위조 거부, 사용중 전환 (R18)', async () => {
-    const url = M.token.ackUrl('http://localhost:3000', ids.a1)
+  it('3. 장애 신고 링크 — 서명 링크 검증, 위조 거부 (§8)', async () => {
+    const url = M.token.incidentUrl('http://localhost:3000', ids.a1)
     const t = new URL(url).searchParams.get('t')
-    expect(M.token.verifyAckToken(ids.a1, t)).toBe(true)
-    expect(M.token.verifyAckToken(ids.a1, '0'.repeat(24))).toBe(false)
-    expect(await M.assignments.acknowledge(ids.a1, 'public')).toBe('ok')
-    expect(await M.assignments.acknowledge(ids.a1, 'public')).toBe('already')
-    const { data: row } = await M.db.db().from('assignments').select('status, acknowledged_at').eq('id', ids.a1).single()
-    expect(row?.status).toBe('사용중')
-    step('3. 인수 확인', [
-      `인수 링크 ${url}`,
-      `토큰 검증 통과 · 위조 토큰 거부 · 두 번째 클릭 → already`,
-      `상태 ${row?.status}, acknowledged_at ${row?.acknowledged_at}`,
+    expect(M.token.verifyIncidentToken(ids.a1, t)).toBe(true)
+    expect(M.token.verifyIncidentToken(ids.a1, '0'.repeat(24))).toBe(false)
+    step('3. 장애 신고 링크', [
+      `신고 링크 ${url}`,
+      `토큰 검증 통과 · 위조 토큰 거부`,
     ])
   })
 

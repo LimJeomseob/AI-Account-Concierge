@@ -79,7 +79,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
 
     // 설정 확인(없으면 시드되지 않은 DB)
     const s = await M.settings.getSettings()
-    expect(s.ack_due_days).toBeGreaterThan(0)
+    expect(s.account_expiry_alert_days).toBeGreaterThan(0)
 
     // 프로그램 2개: 기간 설정 / 미설정
     await db().from('programs').insert([
@@ -166,7 +166,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(after?.status).toBe('승인')
   })
 
-  it('T2 — 같은 이메일·같은 프로그램 2번째 신청은 중복 거부, 접수안내 메일 1통', async () => {
+  it('T2 — 같은 이메일·같은 프로그램 2번째 신청은 중복 거부, 접수안내 메일 없음', async () => {
     const first = await M.apply.applyForAccount({
       programId: PROG_OPEN,
       name: '테스트1',
@@ -193,7 +193,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
       .select('id', { count: 'exact', head: true })
       .eq('ref_id', ids.a1)
       .eq('kind', 'intake')
-    expect(count).toBe(1)
+    expect(count).toBe(0) // 신청자 자동 메일 폐지 (2026-10-28)
   })
 
   it('T3-0 — 접속 링크가 없는 좌석은 배정 풀에서 빠진다 (R14-2)', async () => {
@@ -203,7 +203,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(ids).not.toContain(ACC_NOLINK)
   })
 
-  it('T3 — 가용 GPT 1·Claude 1 에 3명 승인 시 신청 순 2명 배정, 1명 대기, 메일에 접속 링크 포함', async () => {
+  it('T3 — 가용 GPT 1·Claude 1 에 3명 승인 시 신청 순 2명 배정(즉시 사용중), 1명 대기, 안내 메일 없음', async () => {
     const second = await M.apply.applyForAccount({
       programId: PROG_OPEN,
       name: '테스트2',
@@ -238,47 +238,37 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     expect(byId.get(ids.a2)?.service).toBe('Claude') // 무관 → 잔량
     expect(byId.get(ids.a3)?.status).toBe('승인') // 재고 없음 → 대기
 
-    const { data: mails } = await M.db
+    // 배정안내 메일(R16) 폐지 — 대기열에 쌓이지 않는다
+    const { count: mails } = await M.db
       .db()
       .from('mail_queue')
-      .select('body_text')
+      .select('id', { count: 'exact', head: true })
       .eq('kind', 'assignment')
       .in('ref_id', [ids.a1, ids.a2])
-    expect(mails).toHaveLength(2)
-    expect(mails?.[0]?.body_text).toContain('접속 링크')
-    expect(mails?.[0]?.body_text).toContain('https://team.example/')
+    expect(mails).toBe(0)
   })
 
-  it('T4 — 인수 링크는 통과, 위조 토큰은 거부', async () => {
-    expect(M.token.verifyAckToken(ids.a1, M.token.ackToken(ids.a1))).toBe(true)
-    expect(M.token.verifyAckToken(ids.a1, '0'.repeat(24))).toBe(false)
-
-    expect(await M.assignments.acknowledge(ids.a1, 'acceptance@test')).toBe('ok')
+  it('T4 — 배정 즉시 사용중 + 사용개시 기록 (인수 확인 R18 폐지)', async () => {
     const { data } = await M.db.db().from('assignments').select('status, acknowledged_at').eq('id', ids.a1).single()
     expect(data?.status).toBe('사용중')
     expect(data?.acknowledged_at).toBeTruthy()
+
+    const { data: acc } = await M.db.db().from('accounts').select('status').eq('id', ACC_GPT).single()
+    expect(acc?.status).toBe('배정')
   })
 
-  it('T5 — 발송 후 인수기한 경과 건은 인수기한초과 + 계정 회수중 + alerts', async () => {
-    const past = new Date()
-    past.setUTCDate(past.getUTCDate() - 5)
-    await M.db.db().from('assignments').update({ notified_at: past.toISOString() }).eq('id', ids.a2)
-
-    const s = await M.settings.getSettings()
-    const expired = await M.assignments.expireUnacknowledged(s.ack_due_days, today)
-    expect(expired).toContain(ids.a2)
+  it('T5 — 사용중 건은 일일 작업에서 자동 취소되지 않고 경고도 없다 (미인수 자동 취소 R19 폐지)', async () => {
+    await M.daily.runDaily('acceptance@test', today)
 
     const { data: asg } = await M.db.db().from('assignments').select('status').eq('id', ids.a2).single()
-    expect(asg?.status).toBe('인수기한초과')
+    expect(asg?.status).toBe('사용중')
 
     const { data: acc } = await M.db.db().from('accounts').select('status').eq('id', ACC_CL).single()
-    expect(acc?.status).toBe('회수중')
+    expect(acc?.status).toBe('배정')
 
-    await M.alerts.rebuildAlerts(today)
     const { data: alertRows } = await M.db.db().from('alerts').select('*').eq('assignment_id', ids.a2)
-    expect(alertRows).toHaveLength(1)
-    expect(alertRows?.[0].category).toBe('인수기한 초과')
-  })
+    expect(alertRows).toHaveLength(0)
+  }, 120_000)
 
   it('T6 — 대여 종료 → 회수 체크 2개 → 회수 완료 → 대기자 자동 재배정', async () => {
     const yesterday = M.date.addDays(today, -1)
@@ -304,7 +294,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     // 대기자(T3의 3번)가 재배정됐는지
     const { data: a3 } = await M.db.db().from('assignments').select('status, account_id').eq('id', ids.a3).single()
     expect(reassigned.length).toBeGreaterThanOrEqual(0)
-    expect(['승인', '배정']).toContain(a3?.status)
+    expect(['승인', '사용중']).toContain(a3?.status)
   })
 
   it('T7 — 장애(정지) 신고 → 계정 정지 + 관리자 메일 → 예비 계정으로 대체 배정', async () => {
@@ -323,7 +313,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
 
     await M.assignments.approveAssignments([ids.a4], 'acceptance@test', today)
     const { data: before } = await M.db.db().from('assignments').select('status, account_id').eq('id', ids.a4).single()
-    if (before?.status !== '배정') return // 가용 Claude 가 없으면 이 시나리오는 건너뛴다
+    if (before?.status !== '사용중') return // 가용 Claude 가 없으면 이 시나리오는 건너뛴다
 
     const incidentId = await M.incidents.reportIncident({
       assignmentId: ids.a4,
@@ -351,7 +341,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
       .select('status, account_id, rent_start, rent_end')
       .eq('id', newId)
       .single()
-    expect(replacement?.status).toBe('배정')
+    expect(replacement?.status).toBe('사용중')
     expect(replacement?.account_id).toBe(ACC_SPARE) // 예비 우선
     expect(replacement?.rent_start).toBe(before ? replacement?.rent_start : null) // 대여기간 승계
   })
@@ -383,7 +373,6 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     const first = await M.daily.runDaily('acceptance@test', today)
     const second = await M.daily.runDaily('acceptance@test', today)
 
-    expect(second.ack_overdue).toHaveLength(0)
     expect(second.rent_ended).toHaveLength(0)
     expect(second.alerts).toBe(first.alerts)
     expect(second.digest_recipients).toBe(0) // 같은 날 점검 메일 중복 생성 안 함
