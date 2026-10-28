@@ -39,9 +39,10 @@ cp .env.example .env.local     # 값 채우기
 ## 초기 구축
 
 ```bash
-# 1) 스키마
-psql "$DATABASE_URL" -f supabase/migrations/0001_init.sql
-#    또는 Supabase 대시보드 SQL Editor 에 붙여 넣기
+# 1) 스키마 — 0001 → 0002 → 0003 순서로 모두 적용 (각 파일 멱등)
+#    0002·0003 은 enum ADD VALUE 때문에 문장별 커밋이 필요하므로 psql 로 실행한다
+#    (SQL Editor 는 한 트랜잭션으로 묶을 수 있어 0001 에만 안전)
+for f in supabase/migrations/000{1,2,3}_*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 < "$f"; done
 
 # 2) 시드 (설정·메일 템플릿·최초 관리자 [+ 프로그램 24개, 샘플 계정])
 npx tsx scripts/seed.ts --programs --sample-accounts
@@ -99,7 +100,7 @@ npm run build         # 타입체크 + 프로덕션 빌드
 ACCEPTANCE_CONFIRM=yes npm run test:acceptance
 ```
 
-`supabase/migrations/0001_init.sql` 은 PostgreSQL 16 에서 적용·재적용(멱등)과
+`supabase/migrations/0001_init.sql`~`0003_team_seat_access_url.sql` 은 PostgreSQL 16 에서 적용·재적용(멱등)과
 제약(중복 신청 차단, `current_assignment_id` 상태 제약) 동작을 확인했다.
 PRD §16 의 시나리오 T1~T13 은 `lib/__tests__/acceptance.integration.test.ts` 로 자동화돼 있으며,
 실제 Supabase 연결이 있을 때만 실행된다(테스트 데이터는 `ZTEST` 접두, 종료 시 삭제, 메일 발송 차단).

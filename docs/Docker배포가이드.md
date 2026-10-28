@@ -203,7 +203,7 @@ npx tsx scripts/seed.ts --programs --sample-accounts
 | 확인 | 방법 | 기대 결과 |
 |---|---|---|
 | 관리자 로그인 | http://localhost:3000/admin | Google 로그인 후 대시보드. `INITIAL_ADMIN_EMAIL` 이 아닌 계정은 「권한 없음」 |
-| 신청 페이지 | http://localhost:3000/apply | 프로그램 24개가 「접수 준비 중」으로 보임 (기간을 넣으면 활성화) |
+| 신청 페이지 | http://localhost:3000/apply | 프로그램 24개가 「접수 준비 중」으로 보임 (상태를 「진행중」으로 바꾸면 활성화) |
 | 일일 작업 수동 호출 | `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/daily` | `{"ok":true,...}` |
 | 크론 컨테이너 시간대 | `docker compose exec cron date` | `KST` 가 찍힘 |
 | 크론 로그 | `docker compose logs cron` | 09:00 이 지나면 호출 기록이 보임 |
