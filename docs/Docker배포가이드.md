@@ -359,14 +359,26 @@ crontab -e
 # 매일 03:00 백업, 30일 보관
 0 3 * * * sh /opt/AI-Account-Concierge/docker/backup.sh >> /var/log/ai-account-backup.log 2>&1
 ```
-백업 파일은 `docker/backups/YYYY-MM-DD.sql.gz`. **서버 밖(기관 NAS 등)으로도 복사**해 두세요.
+백업 파일은 `docker/backups/YYYY-MM-DD.sql.gz`(public + auth 스키마, `--clean` 포함). **서버 밖(기관 NAS 등)으로도 복사**해 두세요.
+스크립트는 `pg_dump` 가 실패하거나 덤프가 비정상적으로 작으면 파일을 남기지 않고 종료 코드 1 로 끝납니다 — 로그에 「백업 실패」가 보이면 즉시 확인하세요. 백업 파일에는 개인정보가 들어 있으므로 접근 권한(`chmod 600`)과 보관 매체를 관리합니다.
 
-**복구**
+**복구** — 같은 스택(동일 태그) 위에 복원합니다. 덤프에 `--clean --if-exists` 가 들어 있어 기존 객체를 지우고 다시 만듭니다. 오류가 나면 즉시 멈추도록 `ON_ERROR_STOP` 을 켭니다.
 ```bash
 cd /opt/supabase-project
+docker compose stop app cron 2>/dev/null || true   # 앱 컨테이너가 있으면 먼저 중지 (ai-account 스택에서)
 gunzip -c /opt/AI-Account-Concierge/docker/backups/2026-10-01.sql.gz \
-  | docker compose exec -T db psql -U postgres -d postgres
+  | docker compose exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 --single-transaction
 ```
+복원 후 확인: `select count(*) from assignments;` 가 백업 시점 건수와 맞는지, 관리자 Google 로그인이 되는지(auth 스키마 포함 여부).
+
+**복원 리허설** — 운영 전 1회, 이후 분기 1회. 별도 빈 Postgres 컨테이너에 최신 백업을 넣어 위 확인 2가지가 통과하는지 본다.
+```bash
+docker run --rm -d --name restore-test -e POSTGRES_PASSWORD=x postgres:16
+gunzip -c docker/backups/최신.sql.gz | docker exec -i restore-test psql -U postgres -d postgres -v ON_ERROR_STOP=1
+docker exec restore-test psql -U postgres -d postgres -c 'select count(*) from public.assignments;'
+docker rm -f restore-test
+```
+(빈 컨테이너에는 Supabase 역할(`anon`, `authenticated` 등)이 없어 권한 관련 경고가 날 수 있으나 `--no-privileges` 덤프라 데이터 복원은 진행됩니다.)
 
 **Supabase 스택 업그레이드**는 함부로 하지 마세요. `setup.sh` 가 태그를 고정(`self-hosted/v0.8.1`)해 둔 이유입니다. 사업 기간(6개월) 중에는 보안 패치가 아니면 그대로 두는 것을 권합니다.
 
