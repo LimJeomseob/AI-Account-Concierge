@@ -10,8 +10,8 @@ import {
   adminRemoveAction,
   settingsSaveAction,
   templateSaveAction,
-  testMailAction,
 } from '@/app/admin/actions'
+import TestMailForm from './TestMailForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,13 +111,7 @@ export default async function SettingsPage() {
       </Card>
 
       <Card title="발신 테스트 메일">
-        <form action={testMailAction} className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="text-xs text-slate-600">받는 주소 (비우면 본인)</span>
-            <input name="to" type="email" className={inputClass} />
-          </label>
-          <Button variant="ghost">테스트 발송</Button>
-        </form>
+        <TestMailForm />
       </Card>
     </>
   )

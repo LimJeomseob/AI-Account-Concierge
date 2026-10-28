@@ -393,9 +393,17 @@ export async function adminRemoveAction(fd: FormData) {
   revalidatePath('/admin/settings')
 }
 
-export async function testMailAction(fd: FormData) {
+/** 발신 테스트 메일 — SMTP 오류는 예외 대신 메시지로 돌려준다(오류 페이지로 넘어가지 않게) */
+export async function testMailAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
   const actor = await requireAdminAction()
-  await sendTestMail(str(fd, 'to') || actor)
-  await log(actor, 'mail.test', null, { to: str(fd, 'to') || actor })
-  revalidatePath('/admin/settings')
+  const to = str(fd, 'to').trim() || actor
+  try {
+    await sendTestMail(to)
+  } catch (e) {
+    const msg = (e as Error).message ?? String(e)
+    await log(actor, 'mail.test.fail', null, { to, error: msg.slice(0, 300) })
+    return { ok: false, msg: `발송 실패: ${msg}` }
+  }
+  await log(actor, 'mail.test', null, { to })
+  return { ok: true, msg: `${to} 로 테스트 메일을 보냈습니다.` }
 }
