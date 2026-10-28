@@ -7,7 +7,7 @@ import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
 import { capRemaining, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
 import { getSettings } from '@/lib/settings'
-import { log, transitionAccount, transitionAssignment } from '@/lib/state'
+import { claimAccount, log, releaseClaim, transitionAccount, transitionAssignment } from '@/lib/state'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
 import type { Program, Service } from '@/lib/types'
 
@@ -40,6 +40,50 @@ export async function availablePool(scope?: AssignScope): Promise<PoolAccount[]>
     .not('access_url', 'is', null)
   const ok = new Set((secs ?? []).map((s) => s.account_id))
   return (accs ?? []).filter((a) => ok.has(a.id)) as PoolAccount[]
+}
+
+/**
+ * 좌석 1개를 승인 건 1개에 배정한다 (R14·R14-2).
+ * ① 좌석 선점(조건부, lib/state.ts:claimAccount) → ② 배정 「승인 → 사용중」 전이(조건부).
+ * ②가 false 이거나 예외면 ①을 되돌린다 — 좌석이 「배정」인 채로 아무 건에도 연결되지 않는 고아 상태 방지.
+ */
+async function assignSeat(opts: {
+  assignmentId: string
+  accountId: string
+  actor: string
+  action: string
+  patch: Record<string, unknown>
+  detail?: Record<string, unknown>
+}): Promise<boolean> {
+  const claimed = await claimAccount({
+    id: opts.accountId,
+    assignmentId: opts.assignmentId,
+    actor: opts.actor,
+    action: 'account.assign',
+  })
+  if (!claimed) return false
+
+  let ok = false
+  try {
+    ok = await transitionAssignment({
+      id: opts.assignmentId,
+      to: '사용중',
+      actor: opts.actor,
+      action: opts.action,
+      expect: ['승인'],
+      patch: {
+        ...opts.patch,
+        account_id: opts.accountId,
+        acknowledged_at: new Date().toISOString(), // 배정 즉시 사용 개시 (인수 확인 폐지)
+      },
+      detail: { account_id: opts.accountId, ...(opts.detail ?? {}) },
+    })
+  } finally {
+    if (!ok) {
+      await releaseClaim({ id: opts.accountId, assignmentId: opts.assignmentId, actor: opts.actor, reason: 'assign_failed' })
+    }
+  }
+  return ok
 }
 
 /**
@@ -85,44 +129,20 @@ export async function autoAssignProgram(
 
   const assigned: string[] = []
   for (const alloc of plan) {
-    // 계정 선점(경합 방지): 상태가 여전히 「가용」일 때만 갱신
-    const { data: claimed, error: claimErr } = await db()
-      .from('accounts')
-      .update({
-        status: '배정',
-        current_assignment_id: alloc.assignment_id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', alloc.account_id)
-      .eq('status', '가용')
-      .select('id')
-    if (claimErr) throw new Error(claimErr.message)
-    if (!claimed || claimed.length === 0) continue // 다른 처리에서 이미 가져감
-
-    const ok = await transitionAssignment({
-      id: alloc.assignment_id,
-      to: '사용중',
+    const ok = await assignSeat({
+      assignmentId: alloc.assignment_id,
+      accountId: alloc.account_id,
       actor,
       action: 'assignment.assign',
-      expect: ['승인'],
       patch: {
-        account_id: alloc.account_id,
         service: alloc.service satisfies Service,
         assigned_on: today,
         rent_start: alloc.rent_start,
         rent_end: alloc.rent_end,
-        acknowledged_at: new Date().toISOString(), // 배정 즉시 사용 개시 (인수 확인 폐지)
       },
-      detail: { account_id: alloc.account_id, service: alloc.service, period },
+      detail: { service: alloc.service, period },
     })
-    if (!ok) {
-      // 대기열 상태가 바뀐 경우 계정 선점 해제
-      await db()
-        .from('accounts')
-        .update({ status: '가용', current_assignment_id: null, updated_at: new Date().toISOString() })
-        .eq('id', alloc.account_id)
-      continue
-    }
+    if (!ok) continue // 좌석을 다른 처리가 먼저 가져갔거나 대기열 상태가 바뀜
 
     assigned.push(alloc.assignment_id)
   }
@@ -359,28 +379,15 @@ export async function manualAssign(
     .maybeSingle()
   if (!sec?.access_url) throw new Error('접속 링크가 등록되지 않은 계정은 배정할 수 없습니다.')
 
-  const { data: claimed } = await db()
-    .from('accounts')
-    .update({ status: '배정', current_assignment_id: assignmentId, updated_at: new Date().toISOString() })
-    .eq('id', accountId)
-    .eq('status', '가용')
-    .select('id, service')
-  if (!claimed || claimed.length === 0) throw new Error('해당 계정은 가용 상태가 아닙니다.')
+  const { data: acc } = await db().from('accounts').select('service').eq('id', accountId).maybeSingle()
+  if (!acc) throw new Error(`계정 ${accountId} 없음`)
 
-  await transitionAssignment({
-    id: assignmentId,
-    to: '사용중',
+  const ok = await assignSeat({
+    assignmentId,
+    accountId,
     actor,
     action: 'assignment.assign.manual',
-    expect: ['승인'],
-    patch: {
-      account_id: accountId,
-      service: claimed[0].service,
-      assigned_on: today,
-      rent_start: period.start,
-      rent_end: period.end,
-      acknowledged_at: new Date().toISOString(), // 배정 즉시 사용 개시 (인수 확인 폐지)
-    },
-    detail: { account_id: accountId },
+    patch: { service: acc.service, assigned_on: today, rent_start: period.start, rent_end: period.end },
   })
+  if (!ok) throw new Error('해당 계정이 가용 상태가 아니거나, 신청 건 상태가 바뀌었습니다. 새로고침 후 다시 시도해 주세요.')
 }

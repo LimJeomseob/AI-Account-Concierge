@@ -4,7 +4,7 @@
 - 스택: Next.js App Router + TS + Tailwind, Supabase(service role, 서버 전용), Gmail SMTP(nodemailer), Vercel Cron.
 - 시간대: 모든 날짜 계산은 Asia/Seoul. 유틸 `lib/date.ts` 의 `todayKST()` 만 사용.
 - DB 접근: `lib/db.ts` 의 서버 클라이언트만. 브라우저 번들에 Supabase service role 키 절대 포함 금지. 좌석 접속 링크(`account_secrets.access_url`)는 서버 전용이며 로그에 남기지 않는다.
-- 상태 전이: `lib/state.ts` 의 `transitionAssignment()` / `transitionAccount()` 를 통해서만 변경, 항상 `logs` 기록.
+- 상태 전이: `lib/state.ts` 의 `transitionAssignment()` / `transitionAccount()` 를 통해서만 변경, 항상 `logs` 기록. 둘 다 조건부 갱신(읽은 상태일 때만)이며 경합 시 `false`. 좌석 선점·해제는 `claimAccount()` / `releaseClaim()` 만 쓴다(DB 유일 인덱스 `assignments_active_account_uq` 가 최종 방어).
 - 메일: 직접 발송 금지. `lib/mail/queue.ts` 로 대기열에 넣고 `lib/mail/dispatch.ts` 가 Gmail SMTP(`GMAIL_USER` + `GMAIL_APP_PASSWORD`)로 발송. 둘 중 하나라도 비면 대기열에만 쌓인다.
 - 테스트: 도메인 로직(배정·만료·알림·지표)은 순수 함수로 분리하고 Vitest 단위 테스트.
 - 한글 UI, 라벨은 `lib/labels.ts` 에서 관리.
@@ -25,7 +25,7 @@ lib/
   mail/(templates.ts render.ts queue.ts dispatch.ts)
   ops/(apply.ts assignments.ts accounts.ts incidents.ts privacy.ts)
   cron/(daily.ts monthly.ts)
-supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql)
+supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql 0004_seat_uniqueness.sql)
 scripts/seed.ts, scripts/import-accounts.ts
 public/signup-snippet.html                        ← GitHub Pages 삽입용
 Dockerfile, .dockerignore                         ← Next.js standalone 이미지
@@ -63,5 +63,5 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md, docs/Docker
 | R29 실적·스냅샷 | `lib/report.ts`, `lib/cron/monthly.ts` |
 | R30 개인정보 파기 | `lib/ops/privacy.ts` |
 | R31 로그 | `lib/state.ts:log` |
-| R32 멱등 일일 작업 | `lib/cron/daily.ts` |
+| R32 멱등 일일 작업 | `lib/cron/daily.ts`(단계별 오류 수집·점검 메일 보고), `lib/lock.ts`(실행 잠금·마지막 성공 시각), `app/api/health`(`?strict=1` 외부 감시) |
 | R33 Asia/Seoul | `lib/date.ts` |
