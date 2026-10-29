@@ -27,6 +27,8 @@ export interface Program {
   cap: number
   status: ProgramStatus
   note: string | null
+  /** 내부 프로그램(기관관리자) — 공개 신청 목록에서 뺀다 (0007) */
+  internal?: boolean
   created_at?: string
 }
 
@@ -83,7 +85,8 @@ export interface AppUser {
   id: string
   name: string
   affiliation: string | null
-  type: UserType
+  /** 구분 — 기관관리자 등록 건은 공란(0007) */
+  type: UserType | null
   email: string
   phone: string | null
   has_paid: boolean
