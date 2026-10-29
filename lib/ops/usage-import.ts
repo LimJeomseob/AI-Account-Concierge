@@ -24,17 +24,21 @@ export async function buildPlan(
 ): Promise<PlanItem[]> {
   const emails = [...new Set(rows.map((r) => r.email).filter(Boolean))]
   const [{ data: programs }, { data: accounts }, { data: existing }] = await Promise.all([
-    db().from('programs').select('id, name'),
+    db().from('programs').select('id, name, mode, end_on'),
     db().from('accounts').select('id, service, status, kind'),
     emails.length > 0
-      ? db().from('assignments').select('program_id, email, service, status, replaced_at').in('email', emails)
-      : Promise.resolve({ data: [] as Array<{ program_id: string; email: string; service: string | null; status: string; replaced_at: string | null }> }),
+      ? db().from('assignments').select('program_id, email, service, service_wish, status, replaced_at').in('email', emails)
+      : Promise.resolve({
+          data: [] as Array<{ program_id: string; email: string; service: string | null; service_wish: string; status: string; replaced_at: string | null }>,
+        }),
   ])
   const activeKeys = new Set<string>()
   const programEmailKeys = new Set<string>()
   for (const a of existing ?? []) {
     if (ACTIVE.includes(a.status) && a.service) activeKeys.add(`${a.email}|${a.service}`)
-    if (PROGRAM_KEY_STATUSES.includes(a.status) && !a.replaced_at) programEmailKeys.add(`${a.program_id}|${a.email}`)
+    // 0008: 같은 프로그램이라도 플랫폼이 다르면 함께 둘 수 있다 — 플랫폼 = 배정 서비스, 없으면 희망
+    if (PROGRAM_KEY_STATUSES.includes(a.status) && !a.replaced_at)
+      programEmailKeys.add(`${a.program_id}|${a.email}|${a.service ?? a.service_wish}`)
   }
   return planImport(rows, {
     mode,
