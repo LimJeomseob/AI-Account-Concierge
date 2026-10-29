@@ -33,6 +33,18 @@ export function safeNext(next: string | null | undefined): string {
 }
 
 /**
+ * 세션·허용 여부에 따른 착지 경로 (순수 함수, PRD §7-2·§13)
+ * 로그인 화면·권한 없음 화면·로그인 콜백이 같은 규칙을 쓴다.
+ *  - 미로그인 → 로그인 화면
+ *  - 설정 > 관리자(admins 표)에 등록된 계정 → 관리자 페이지(next, 기본 대시보드)
+ *  - 그 외 → 권한 없음
+ */
+export function landingFor(email: string | null | undefined, admin: boolean, next?: string | null): string {
+  if (!email) return '/admin/login'
+  return admin ? safeNext(next) : '/admin/denied'
+}
+
+/**
  * Google 계정 선택 화면 생략용 힌트 쿠키 — 관리자로 로그인에 성공한 이메일만 저장한다.
  * 브라우저에 Google 계정이 여러 개 로그인돼 있으면 Google 이 계정 선택 화면을 띄우는데,
  * login_hint 를 주면 해당 세션을 바로 고른다.

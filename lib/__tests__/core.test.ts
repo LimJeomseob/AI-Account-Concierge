@@ -305,6 +305,16 @@ describe('로그인 콜백 주소 (두 번 로그인 방지)', () => {
     expect(appBase(h({ 'x-forwarded-host': 'a.example.kr', 'x-forwarded-proto': 'https' }), 'http://localhost/x', 'https://b.example.kr')).toBe('https://a.example.kr')
     expect(appBase(h({}), 'https://c.example.kr/auth/callback', 'https://b.example.kr')).toBe('https://c.example.kr')
   })
+  it('landingFor: 등록된 관리자는 관리자 페이지로 바로, 미등록은 권한 없음, 미로그인은 로그인', async () => {
+    const { landingFor } = await import('@/lib/redirect')
+    expect(landingFor(null, false)).toBe('/admin/login')
+    expect(landingFor(null, true)).toBe('/admin/login')
+    expect(landingFor('a@gnu.ac.kr', true)).toBe('/admin/dashboard')
+    expect(landingFor('a@gnu.ac.kr', true, '/admin/settings')).toBe('/admin/settings')
+    expect(landingFor('a@gnu.ac.kr', true, '//evil.com')).toBe('/admin/dashboard')
+    expect(landingFor('b@gnu.ac.kr', false)).toBe('/admin/denied')
+    expect(landingFor('b@gnu.ac.kr', false, '/admin/settings')).toBe('/admin/denied')
+  })
 })
 
 describe('Google 계정 선택 생략 힌트', () => {

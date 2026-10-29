@@ -1,7 +1,7 @@
 /** Google 로그인 콜백 — 코드를 세션 쿠키로 교환 */
 import { NextResponse } from 'next/server'
 import { authClient, isAdmin } from '@/lib/auth'
-import { LOGIN_HINT_COOKIE, LOGIN_HINT_MAX_AGE, appBase as resolveBase, loginHint, safeNext } from '@/lib/redirect'
+import { LOGIN_HINT_COOKIE, LOGIN_HINT_MAX_AGE, appBase as resolveBase, landingFor, loginHint, safeNext } from '@/lib/redirect'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,11 +37,13 @@ export async function GET(req: Request) {
     console.error('[auth.callback] 코드 교환 실패:', error.message)
     return NextResponse.redirect(new URL(`/admin/login?error=${encodeURIComponent(error.message)}`, base))
   }
-  const res = NextResponse.redirect(new URL(next, base))
-  // 관리자 이메일을 기억해 다음 로그인 때 Google 계정 선택 화면을 건너뛴다 (이메일은 로그에 남기지 않는다)
+  // 설정 > 관리자(admins)에 등록된 계정은 관리자 페이지로 바로, 아니면 권한 없음 화면으로 (PRD §13)
   const { data } = await supabase.auth.getUser()
   const email = loginHint(data.user?.email)
-  if (email && (await isAdmin(email))) {
+  const admin = !!email && (await isAdmin(email))
+  const res = NextResponse.redirect(new URL(landingFor(email, admin, next), base))
+  // 관리자 이메일을 기억해 다음 로그인 때 Google 계정 선택 화면을 건너뛴다 (이메일은 로그에 남기지 않는다)
+  if (email && admin) {
     res.cookies.set(LOGIN_HINT_COOKIE, email, {
       httpOnly: true,
       secure: base.startsWith('https://'),
