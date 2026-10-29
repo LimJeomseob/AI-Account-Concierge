@@ -8,6 +8,7 @@ import { todayKST } from '@/lib/date'
 import { capRemaining, chunk, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
 import { claimAccount, log, releaseClaim, transitionAccount, transitionAssignment } from '@/lib/state'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
+import { applyFilter, type ApplicantFilter } from '@/lib/ops/export'
 import type { Program, Service } from '@/lib/types'
 
 const ACTIVE_OCCUPYING = ['배정', '사용중', '회수중', '회수완료'] as const
@@ -191,15 +192,18 @@ export interface ExportAssignResult {
  * 희망 서비스·조건부 선점을 지킨다.
  */
 export async function assignApprovedForExport(
-  filter: { program?: string; q?: string },
+  filter: ApplicantFilter,
   actor: string,
   today: string = todayKST(),
   scope?: AssignScope,
 ): Promise<ExportAssignResult> {
-  let q = db().from('assignments').select('id, program_id').eq('status', '승인').is('account_id', null)
-  if (filter.program) q = q.eq('program_id', filter.program)
-  if (filter.q) q = q.or(`name.ilike.%${filter.q}%,email.ilike.%${filter.q}%,id.ilike.%${filter.q}%`)
+  // 화면 필터(프로그램·플랫폼·이름·이메일)를 그대로 쓰되 대상은 항상 「승인」 건
+  let q = applyFilter(db().from('assignments').select('id, program_id'), filter, { skipStatus: true })
+    .eq('status', '승인')
+    .is('account_id', null)
   if (scope?.programIds) q = q.in('program_id', scope.programIds)
+  // 선택 승인 + 배정(사용현황 화면): 고른 건만 대상으로
+  if (scope?.assignmentIds) q = q.in('id', scope.assignmentIds)
   const { data: targets, error } = await q.order('applied_at', { ascending: true })
   if (error) throw new Error(error.message)
   const rows = targets ?? []

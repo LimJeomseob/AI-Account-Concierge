@@ -176,7 +176,8 @@ describe('신청자 목록 내려받기 (R7·R30)', () => {
 
   it('내려받기 쿼리는 빈 필터를 생략한다', () => {
     expect(exportQuery({})).toBe('')
-    expect(exportQuery({ status: '신청', program: '', q: '홍' })).toBe('?status=%EC%8B%A0%EC%B2%AD&q=%ED%99%8D')
+    expect(exportQuery({ status: '신청', program: '', name: '홍' })).toBe('?status=%EC%8B%A0%EC%B2%AD&name=%ED%99%8D')
+    expect(exportQuery({ account: 'CL-001', email: 'a@b' })).toBe('?email=a%40b&account=CL-001')
   })
 })
 
@@ -331,5 +332,58 @@ describe('로그인 확인 — JWT 클레임에서 이메일 (getClaims)', () =>
     expect(emailFromClaims({ email: '' })).toBeNull()
     expect(emailFromClaims({ email: 123 })).toBeNull()
     expect(emailFromClaims(null)).toBeNull()
+  })
+})
+
+describe('유료계정 사용현황 필터', () => {
+  it('parseFilter: 빈 값 제거·공백 정리·100자 제한, 모르는 키 무시', async () => {
+    const { parseFilter } = await import('@/lib/filter')
+    const m: Record<string, string> = { status: '사용중', program: '', name: ' 홍 ', q: 'old', account: 'x'.repeat(150), service: 'Claude' }
+    const f = parseFilter((k) => m[k])
+    expect(f).toEqual({ status: '사용중', service: 'Claude', name: '홍', account: 'x'.repeat(100) })
+    expect(parseFilter((k) => (k === 'service' ? 'Gemini' : ''))).toEqual({})
+  })
+  it('likePattern: % _ \\ 는 글자 그대로', async () => {
+    const { likePattern } = await import('@/lib/filter')
+    expect(likePattern('CL-0')).toBe('%CL-0%')
+    expect(likePattern('50%_a')).toBe('%50\\%\\_a%')
+  })
+  it('applyFilter: 조건별로 eq/ilike 를 걸고 skipStatus 면 상태를 뺀다', async () => {
+    const { applyFilter } = await import('@/lib/filter')
+    const calls: string[] = []
+    const b = {
+      eq(c: string, v: string) { calls.push(`eq:${c}=${v}`); return b },
+      ilike(c: string, v: string) { calls.push(`ilike:${c}=${v}`); return b },
+      or(v: string) { calls.push(`or:${v}`); return b },
+    }
+    applyFilter(b, { status: '승인', program: 'P26-01', service: 'GPT', name: '홍', email: 'gnu', account: 'CL' })
+    expect(calls).toEqual([
+      'eq:status=승인',
+      'eq:program_id=P26-01',
+      'or:service.eq.GPT,and(service.is.null,service_wish.eq.GPT)',
+      'ilike:name=%홍%',
+      'ilike:email=%gnu%',
+      'ilike:account_id=%CL%',
+    ])
+    calls.length = 0
+    applyFilter(b, { status: '승인', name: '홍' }, { skipStatus: true })
+    expect(calls).toEqual(['ilike:name=%홍%'])
+  })
+})
+
+describe('선택 승인 + 배정 + 이메일 내려받기', () => {
+  it('assignedCsv: 계정이 없으면 (대기)', () => {
+    const csv = assignedCsv([
+      { name: '홍길동', email: 'a@gnu.ac.kr', account_id: 'CL-001' },
+      { name: '김대기', email: 'b@gnu.ac.kr', account_id: null },
+    ])
+    expect(csv).toContain('홍길동,a@gnu.ac.kr,CL-001')
+    expect(csv).toContain('김대기,b@gnu.ac.kr,(대기)')
+  })
+  it('approveAssignMessage: 승인·배정·대기 건수', async () => {
+    const { approveAssignMessage } = await import('@/lib/ops/export')
+    expect(approveAssignMessage(0, 0, 0)).toBe('선택한 건 중 승인할 「신청」 건이 없습니다.')
+    expect(approveAssignMessage(3, 3, 0)).toBe('3명 승인 · 3명 배정 — 내려받은 이메일을 팀 워크스페이스에 초대해 주세요.')
+    expect(approveAssignMessage(3, 2, 1)).toBe('3명 승인 · 2명 배정 · 1명 계정 대기(「승인」으로 남음) — 내려받은 이메일을 팀 워크스페이스에 초대해 주세요.')
   })
 })

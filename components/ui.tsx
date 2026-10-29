@@ -20,7 +20,7 @@ export function Badge({ value }: { value: string | null | undefined }) {
   if (!value) return <span className="text-slate-400">-</span>
   const cls = STATUS_BADGE[value] ?? 'bg-slate-100 text-slate-700 border-slate-200'
   return (
-    <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[13px] font-medium ${cls}`}>{value}</span>
+    <span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[13px] font-medium ${cls}`}>{value}</span>
   )
 }
 

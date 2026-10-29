@@ -22,7 +22,7 @@ import {
   setChecklist,
 } from '@/lib/ops/assignments'
 import { importAccounts, parseAccountCsv } from '@/lib/ops/accounts'
-import { assignExportMessage, assignedCsv } from '@/lib/ops/export'
+import { approveAssignMessage, assignExportMessage, assignedCsv, parseFilter } from '@/lib/ops/export'
 import { replaceAccount } from '@/lib/ops/incidents'
 import { runDaily } from '@/lib/cron/daily'
 import { runMonthly } from '@/lib/cron/monthly'
@@ -44,6 +44,40 @@ export async function approveAction(fd: FormData) {
   await approveAssignments(ids(fd), actor)
   revalidatePath('/admin/assignments')
   revalidatePath('/admin/dashboard')
+}
+
+/**
+ * 선택 승인 + 배정 + 이메일 내려받기 (유료계정 사용현황, 2026-10-29)
+ * 고른 「신청」 건을 승인(R13)하고 바로 계정을 배정(R12·R14)한 뒤, 고른 사람의 이름·이메일·계정번호 CSV 를 돌려준다.
+ * 가용 계정이 모자라 배정되지 못한 건은 「승인」으로 남고 CSV 계정번호 칸은 「(대기)」.
+ */
+export async function approveAssignExportAction(
+  fd: FormData,
+): Promise<{ ok: boolean; msg: string; csv?: string; filename?: string }> {
+  const actor = await requireAdminAction()
+  const selected = ids(fd)
+  if (selected.length === 0) return { ok: false, msg: '목록에서 「신청」 건을 하나 이상 선택해 주세요.' }
+  try {
+    const today = todayKST()
+    const { approved } = await approveAssignments(selected, actor, today)
+    const r = await assignApprovedForExport({}, actor, today, { assignmentIds: selected })
+    const { data } = await db()
+      .from('assignments')
+      .select('id, name, email, account_id, status, applied_at')
+      .in('id', selected)
+      .in('status', ['승인', '사용중'])
+      .order('applied_at', { ascending: true })
+    const rows = data ?? []
+    const waiting = rows.filter((x) => x.status === '승인').length
+    revalidatePath('/admin/assignments')
+    revalidatePath('/admin/dashboard')
+    revalidatePath('/admin/accounts')
+    const msg = approveAssignMessage(approved, r.assigned.length, waiting)
+    if (rows.length === 0) return { ok: false, msg }
+    return { ok: true, msg, csv: assignedCsv(rows), filename: `approved-${today.replace(/-/g, '')}.csv` }
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message }
+  }
 }
 
 export async function cancelAction(fd: FormData) {
@@ -83,7 +117,7 @@ export async function assignExportAction(
 ): Promise<{ ok: boolean; msg: string; csv?: string; filename?: string }> {
   const actor = await requireAdminAction()
   try {
-    const r = await assignApprovedForExport({ program: str(fd, 'program') || undefined, q: str(fd, 'q') || undefined }, actor)
+    const r = await assignApprovedForExport(parseFilter((k) => str(fd, k)), actor)
     revalidatePath('/admin/assignments')
     revalidatePath('/admin/dashboard')
     revalidatePath('/admin/accounts')
@@ -235,7 +269,7 @@ export async function accountStatusAction(
     const allowed = MANUAL_ACCOUNT_TRANSITIONS[from]
     return {
       ok: false,
-      msg: `「${from}」 → 「${to}」 는 직접 바꿀 수 없습니다(배정·회수는 신청·배정 화면에서 처리). ${id} 에서 가능한 상태: ${allowed.length > 0 ? allowed.join('·') : '없음'}`,
+      msg: `「${from}」 → 「${to}」 는 직접 바꿀 수 없습니다(배정·회수는 유료계정 사용현황 화면에서 처리). ${id} 에서 가능한 상태: ${allowed.length > 0 ? allowed.join('·') : '없음'}`,
     }
   }
 

@@ -145,7 +145,7 @@ export default async function DashboardPage() {
         title={`회수 대상 (${alerts.length})`}
         right={
           <Link href="/admin/assignments?status=회수중" className="text-xs text-blue-700">
-            신청·배정에서 처리 →
+            유료계정 사용현황에서 처리 →
           </Link>
         }
       >
