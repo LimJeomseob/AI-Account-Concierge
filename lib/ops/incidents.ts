@@ -232,11 +232,10 @@ export async function replaceAccount(
 
 /** R28: 정지율(%) */
 export async function suspensionRate(): Promise<number> {
-  const { count: total } = await db().from('accounts').select('id', { count: 'exact', head: true })
+  const [{ count: total }, { count: susp }] = await Promise.all([
+    db().from('accounts').select('id', { count: 'exact', head: true }),
+    db().from('accounts').select('id', { count: 'exact', head: true }).eq('status', '정지'),
+  ])
   if (!total) return 0
-  const { count: susp } = await db()
-    .from('accounts')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', '정지')
   return Math.round(((susp ?? 0) / total) * 1000) / 10
 }

@@ -31,8 +31,10 @@ export default async function AssignmentsPage({ searchParams }: { searchParams: 
   if (program) query = query.eq('program_id', program)
   if (q) query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,id.ilike.%${q}%`)
 
-  const { data: rows, error: rowsError } = await query
-  const { data: programs } = await db().from('programs').select('id, name').order('id')
+  const [{ data: rows, error: rowsError }, { data: programs }] = await Promise.all([
+    query,
+    db().from('programs').select('id, name').order('id'),
+  ])
 
   // 안내문의 장애 신고 링크(R26) — 신청자 자동 메일이 없으므로 안내문에 담아 직접 전달한다
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''

@@ -23,39 +23,43 @@ async function countBy(table: string, column: string, values: string[]): Promise
 
 export default async function DashboardPage() {
   const today = todayKST()
-  const s = await getSettings()
 
-  const pendingApproval = await countBy('assignments', 'status', ['신청'])
-  const waiting = await countBy('assignments', 'status', ['승인'])
-  const inUse = await countBy('assignments', 'status', ['사용중'])
-  const openIncidents = await countBy('incidents', 'status', ['접수', '처리중'])
-  const mailPending = await countBy('mail_queue', 'status', ['pending'])
-  const mailFailed = await countBy('mail_queue', 'status', ['failed'])
+  // 서로 관계없는 조회는 동시에 보낸다 — 순서대로 기다리면 왕복 시간이 조회 수만큼 쌓인다
+  const latestLog = (action: string) =>
+    db().from('logs').select('at, detail').eq('action', action).order('at', { ascending: false }).limit(1).maybeSingle()
+  const [
+    s,
+    pendingApproval,
+    waiting,
+    inUse,
+    openIncidents,
+    mailPending,
+    mailFailed,
+    { data: accRows },
+    alerts,
+    rate,
+    { data: lastRun },
+    lastOkAt,
+    { data: lastMail },
+  ] = await Promise.all([
+    getSettings(),
+    countBy('assignments', 'status', ['신청']),
+    countBy('assignments', 'status', ['승인']),
+    countBy('assignments', 'status', ['사용중']),
+    countBy('incidents', 'status', ['접수', '처리중']),
+    countBy('mail_queue', 'status', ['pending']),
+    countBy('mail_queue', 'status', ['failed']),
+    db().from('accounts').select('service, status'),
+    listAlerts(),
+    suspensionRate(),
+    latestLog('cron.daily.done'), // 일일 작업 상태 (R32) — 마지막 실행 결과의 오류
+    lastOk('cron.daily'),
+    latestLog('mail.dispatch'),
+  ])
 
   // 유료계정 지원현황 — 서비스별 계약 수 대비 등록·사용 (설정 contract_gpt·contract_claude)
-  const { data: accRows } = await db().from('accounts').select('service, status')
   const support = supportStatus(accRows ?? [], { GPT: s.contract_gpt, Claude: s.contract_claude })
-
-  const alerts = await listAlerts()
-  const rate = await suspensionRate()
-
-  // 일일 작업 상태 (R32) — 마지막 실행 결과의 오류, 마지막 성공 시각
-  const { data: lastRun } = await db()
-    .from('logs')
-    .select('at, detail')
-    .eq('action', 'cron.daily.done')
-    .order('at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
   const lastRunErrors = ((lastRun?.detail as { errors?: DailyError[] } | null)?.errors ?? []) as DailyError[]
-  const lastOkAt = await lastOk('cron.daily')
-  const { data: lastMail } = await db()
-    .from('logs')
-    .select('at, detail')
-    .eq('action', 'mail.dispatch')
-    .order('at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
   const mailStopped = (lastMail?.detail as { stopped?: string } | null)?.stopped
   const cronStale = lastOkAt !== null && Date.now() - lastOkAt > 26 * 60 * 60 * 1000
 

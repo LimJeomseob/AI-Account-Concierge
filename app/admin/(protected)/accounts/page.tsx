@@ -11,8 +11,10 @@ export const dynamic = 'force-dynamic'
 export default async function AccountsPage() {
   await requireAdmin()
 
-  const { data: accounts } = await db().from('accounts').select('*').order('id')
-  const { data: secrets } = await db().from('account_secrets').select('account_id, login_email')
+  const [{ data: accounts }, { data: secrets }] = await Promise.all([
+    db().from('accounts').select('*').order('id'),
+    db().from('account_secrets').select('account_id, login_email'),
+  ])
   const secMap = new Map((secrets ?? []).map((s) => [s.account_id, s]))
 
   return (
