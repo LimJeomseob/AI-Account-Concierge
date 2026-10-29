@@ -8,6 +8,7 @@ import { programCsv, programReport, summaryCsv, summaryReport } from '@/lib/repo
 import { queueAdminMail } from '@/lib/mail/queue'
 import { dispatchQueue } from '@/lib/mail/dispatch'
 import { log } from '@/lib/state'
+import { APP_URL } from '@/lib/site'
 
 export interface SnapshotResult {
   month: string
@@ -52,7 +53,7 @@ export async function runMonthly(actor = 'system', month: string = monthKST()): 
       .map((p) => `  - ${p.program_name}: 신청 ${p.applied_cnt} / 배정 ${p.assigned_cnt} / 사용 ${p.used_cnt}`),
     '',
     `CSV 는 관리자 화면 「실적 > 월별 스냅샷」에서 내려받을 수 있습니다.`,
-    `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin/reports`,
+    `${APP_URL}/admin/reports`,
   ].join('\n')
 
   // 멱등(R32): 같은 달 스냅샷 메일을 이미 넣었으면 다시 넣지 않는다(스냅샷 수치는 위에서 갱신됨)

@@ -8,7 +8,8 @@
 - 메일: 직접 발송 금지. `lib/mail/queue.ts` 로 대기열에 넣고 `lib/mail/dispatch.ts` 가 Gmail SMTP(`GMAIL_USER` + `GMAIL_APP_PASSWORD`)로 발송. 둘 중 하나라도 비면 대기열에만 쌓인다.
 - 테스트: 도메인 로직(배정·만료·알림·지표)은 순수 함수로 분리하고 Vitest 단위 테스트.
 - 한글 UI, 라벨은 `lib/labels.ts` 에서 관리. 용어는 「좌석」이 아니라 「계정」, 「좌석번호」가 아니라 「계정번호」(2026-10-29).
-- 비밀 값은 `.env.local`, 예시는 `.env.example` 에 유지.
+- 비밀 값은 Vercel 환경변수(Production·Preview), 이름 예시는 `.env.example` 에 유지. 로컬 실행 없음(2026-10-29).
+- 접속 주소는 `https://ai-account-concierge.vercel.app` 고정 — `lib/site.ts` 의 `APP_URL` 만 쓴다(`NEXT_PUBLIC_APP_URL` 폐지). 운영 배포의 다른 호스트는 미들웨어가 이 주소로 보낸다(`/api` 제외).
 
 ## 디렉터리
 
@@ -20,7 +21,7 @@ app/
   api/public/programs, api/public/apply
   api/cron/daily, api/cron/monthly, api/health, api/admin/report
 lib/
-  db.ts date.ts state.ts ids.ts assign.ts transitions.ts alerts.ts report.ts
+  db.ts date.ts state.ts ids.ts assign.ts transitions.ts alerts.ts report.ts site.ts redirect.ts
   auth.ts settings.ts token.ts cors.ts rate-limit.ts labels.ts types.ts seed-data.ts
   mail/(templates.ts render.ts queue.ts dispatch.ts)
   ops/(apply.ts assignments.ts accounts.ts incidents.ts export.ts)

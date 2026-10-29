@@ -1,13 +1,14 @@
 /** Google 로그인 콜백 — 코드를 세션 쿠키로 교환 */
 import { NextResponse } from 'next/server'
 import { authClient, isAdmin } from '@/lib/auth'
+import { APP_URL } from '@/lib/site'
 import { LOGIN_HINT_COOKIE, LOGIN_HINT_MAX_AGE, appBase as resolveBase, landingFor, loginHint, safeNext } from '@/lib/redirect'
 
 export const dynamic = 'force-dynamic'
 
 /** 로그인을 시작한 주소로 돌아간다 — 세션 쿠키가 그 주소에 저장되므로(lib/redirect.ts) */
 function appBase(req: Request): string {
-  return resolveBase(req.headers, req.url, process.env.NEXT_PUBLIC_APP_URL)
+  return resolveBase(req.headers, req.url, APP_URL)
 }
 
 export async function GET(req: Request) {

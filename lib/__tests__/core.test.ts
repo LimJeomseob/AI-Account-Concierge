@@ -317,6 +317,28 @@ describe('로그인 콜백 주소 (두 번 로그인 방지)', () => {
   })
 })
 
+describe('고정 접속 주소 (클라우드 전용, 2026-10-29)', () => {
+  it('APP_URL 은 ai-account-concierge.vercel.app', async () => {
+    const { APP_URL } = await import('@/lib/site')
+    expect(APP_URL).toBe('https://ai-account-concierge.vercel.app')
+  })
+  it('canonicalRedirect: 운영 배포의 다른 호스트만 고정 주소로, /api 는 제외', async () => {
+    const { canonicalRedirect } = await import('@/lib/site')
+    const other = 'ai-account-concierge-abc123-limjeomseob.vercel.app'
+    expect(canonicalRedirect(other, '/admin/login?error=x', 'production')).toBe(
+      'https://ai-account-concierge.vercel.app/admin/login?error=x',
+    )
+    expect(canonicalRedirect(other, '/', 'production')).toBe('https://ai-account-concierge.vercel.app/')
+    expect(canonicalRedirect('ai-account-concierge.vercel.app', '/admin', 'production')).toBeNull()
+    expect(canonicalRedirect('AI-Account-Concierge.vercel.app:443', '/admin', 'production')).toBeNull()
+    expect(canonicalRedirect(other, '/api/public/apply', 'production')).toBeNull()
+    expect(canonicalRedirect(other, '/api/cron/daily', 'production')).toBeNull()
+    expect(canonicalRedirect(other, '/admin', 'preview')).toBeNull()
+    expect(canonicalRedirect(other, '/admin', undefined)).toBeNull()
+    expect(canonicalRedirect(null, '/admin', 'production')).toBeNull()
+  })
+})
+
 describe('Google 계정 선택 생략 힌트', () => {
   it('loginHint: 이메일 형식만 통과, 소문자', async () => {
     const { loginHint } = await import('@/lib/redirect')

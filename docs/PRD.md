@@ -420,7 +420,7 @@ UI 원칙: 한글 라벨, Tailwind 표(`components/ui.tsx`), 상태는 Badge 색
 - 메일: 직접 발송 금지. mail_queue 에 넣고 lib/mail/dispatch.ts 가 발송.
 - 테스트: 도메인 로직(배정·만료·알림·지표)은 순수 함수로 분리하고 Vitest 단위 테스트, 흐름은 실 DB 통합 테스트(test:acceptance).
 - 한글 UI, 라벨은 lib/labels.ts 에서 관리.
-- 비밀 값은 .env.local, 예시는 .env.example 에 유지.
+- 비밀 값은 Vercel 환경변수, 예시는 .env.example 에 유지(로컬 실행 없음, 2026-10-29).
 ```
 
 권장 디렉터리 (초안 — 현행 구조는 CLAUDE.md 「디렉터리」 참고)
@@ -437,7 +437,9 @@ docs/ PRD.md, 운영매뉴얼.md
 public/signup-snippet.html   (GitHub Pages 삽입용 사본)
 ```
 
-환경변수: `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Auth 전용), `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_SECRET`, `CRON_SECRET`, `INITIAL_ADMIN_EMAIL`.
+접속 주소: `https://ai-account-concierge.vercel.app` 고정(`lib/site.ts`, 2026-10-29 — `NEXT_PUBLIC_APP_URL` 폐지).
+
+환경변수: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`(Auth 전용), `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `APP_SECRET`, `CRON_SECRET`, `INITIAL_ADMIN_EMAIL`.
 
 ---
 
