@@ -150,7 +150,7 @@ describe('신청자 목록 내려받기 (R7·R30)', () => {
     {
       id: 'A261028-0001', name: '홍길동', email: 'Hong@Example.com', program_id: 'P26-01', service_wish: 'GPT',
       account_id: 'GPT-001', service: 'GPT', status: '사용중', applied_at: '2026-10-27T15:30:00Z',
-      rent_start: '2026-10-28', rent_end: '2026-11-26', programs: { name: '특강' }, users: { affiliation: 'AI융합원', type: '교원' },
+      rent_start: '2026-10-28', rent_end: '2026-11-26', acknowledged_at: '2026-10-27T16:00:00Z', programs: { name: '특강' }, users: { affiliation: 'AI융합원', type: '교원' },
     },
     {
       id: 'A261028-0002', name: '(파기)', email: 'u-0002@purged.local', program_id: 'P26-01', service_wish: '무관',
@@ -165,7 +165,8 @@ describe('신청자 목록 내려받기 (R7·R30)', () => {
     const csv = applicantCsv(rows)
     const lines = csv.split('\n')
     expect(lines[0].startsWith('﻿접수번호,프로그램,이름,이메일')).toBe(true)
-    expect(lines[1]).toBe('A261028-0001,특강,홍길동,Hong@Example.com,AI융합원,교원,GPT,GPT-001 (GPT),사용중,2026-10-28,2026-11-26,2026-10-28')
+    expect(lines[0]).toBe('\ufeff접수번호,프로그램,이름,이메일,소속,구분,플랫폼,계정번호,상태,희망,신청일,사용개시,대여시작,대여종료')
+    expect(lines[1]).toBe('A261028-0001,특강,홍길동,Hong@Example.com,AI융합원,교원,ChatGPT,GPT-001,사용중,GPT,2026-10-28,2026-10-28,2026-10-28,2026-11-26')
     expect(lines[2]).toContain(',P26-01,(파기),u-0002@purged.local,,,')
     expect(csv).not.toContain('https://') // 접속 링크는 포함하지 않는다
   })

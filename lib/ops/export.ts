@@ -1,5 +1,6 @@
 /**
- * 신청자 목록 내려받기 (관리자 전용) — 메일 발송 명단·보고용.
+ * 유료계정 사용현황 CSV 내려받기 (관리자 전용) — 사용현황 보고·메일 발송 명단용.
+ * 2026-10-29: 사용현황 화면 개편에 맞춰 플랫폼·계정번호·사용 개시 열을 추가했다.
  * 2026-10-28: 신청자 자동 메일(R11·R16) 폐지로 담당자가 직접 안내하므로, 신청·배정 화면의
  * 필터 결과를 그대로 CSV 로 내려받거나 이메일만 복사할 수 있게 한다.
  */
@@ -18,14 +19,16 @@ export interface ApplicantRow {
   applied_at: string
   rent_start: string | null
   rent_end: string | null
+  acknowledged_at?: string | null
   programs?: { name: string } | null
-  users?: { affiliation: string | null; type: string } | null
+  /** type 은 기관관리자 등록 건이면 공란(0007) */
+  users?: { affiliation: string | null; type: string | null } | null
 }
 
 export { FILTER_KEYS, applyFilter, exportQuery, likePattern, parseFilter, type ApplicantFilter } from '@/lib/filter'
 
 export const APPLICANT_SELECT =
-  'id, name, email, program_id, service_wish, account_id, service, status, applied_at, rent_start, rent_end, programs(name), users(affiliation, type)'
+  'id, name, email, program_id, service_wish, account_id, service, status, applied_at, rent_start, rent_end, acknowledged_at, programs(name), users(affiliation, type)'
 
 export const APPLICANT_CSV_HEADERS = [
   '접수번호',
@@ -34,13 +37,17 @@ export const APPLICANT_CSV_HEADERS = [
   '이메일',
   '소속',
   '구분',
-  '희망',
-  '계정',
+  '플랫폼',
+  '계정번호',
   '상태',
+  '희망',
+  '신청일',
+  '사용개시',
   '대여시작',
   '대여종료',
-  '신청일',
 ] as const
+
+const PLATFORM_LABEL: Record<string, string> = { GPT: 'ChatGPT', Claude: 'Claude' }
 
 export function applicantCsv(rows: ApplicantRow[]): string {
   return toCsv(
@@ -52,12 +59,14 @@ export function applicantCsv(rows: ApplicantRow[]): string {
       r.email,
       r.users?.affiliation ?? '',
       r.users?.type ?? '',
-      r.service_wish,
-      r.account_id ? `${r.account_id} (${r.service ?? '-'})` : '',
+      r.service ? PLATFORM_LABEL[r.service] ?? r.service : '',
+      r.account_id ?? '',
       r.status,
+      r.service_wish,
+      toKSTDate(r.applied_at) ?? '',
+      toKSTDate(r.acknowledged_at ?? null) ?? '',
       r.rent_start ?? '',
       r.rent_end ?? '',
-      toKSTDate(r.applied_at) ?? '',
     ]),
   )
 }
