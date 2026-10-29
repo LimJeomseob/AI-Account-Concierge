@@ -1,8 +1,18 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
+import { authForwardPath } from '@/lib/redirect'
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  // Supabase 가 로그인 결과(?code= / ?error=)를 첫 화면으로 돌려보낸 경우 로그인 처리로 넘긴다 (PRD §13)
+  const forward = authForwardPath(await searchParams)
+  if (forward) redirect(forward)
+
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
