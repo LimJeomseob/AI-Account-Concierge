@@ -22,7 +22,8 @@ export async function GET(req: Request) {
   const { data, error } = await db().from('programs').select('*').order('id')
   if (error) return jsonWithCors(req, { ok: false, msg: '프로그램 조회 실패' }, 500)
 
-  const programs = (data as Program[]).map((p) => {
+  // 내부 프로그램(기관관리자, 0007)은 공개 목록에 보이지 않는다. 열이 없던 배포에서도 안전하게 JS 에서 거른다
+  const programs = (data as Program[]).filter((p) => !p.internal).map((p) => {
     const a = applyAvailability(p, today)
     return {
       id: p.id,

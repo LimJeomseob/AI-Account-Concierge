@@ -25,7 +25,7 @@ lib/
   mail/(templates.ts render.ts queue.ts dispatch.ts)
   ops/(apply.ts assignments.ts accounts.ts incidents.ts export.ts)
   cron/(daily.ts monthly.ts)
-supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql 0004_seat_uniqueness.sql 0005_report_dedup.sql 0006_drop_access_link_rule.sql)
+supabase/migrations/(0001_init.sql 0002_program_status.sql 0003_team_seat_access_url.sql 0004_seat_uniqueness.sql 0005_report_dedup.sql 0006_drop_access_link_rule.sql 0007_internal_program_blank_type.sql)
 scripts/seed.ts, scripts/import-accounts.ts
 public/signup-snippet.html                        ← GitHub Pages 삽입용
 docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md

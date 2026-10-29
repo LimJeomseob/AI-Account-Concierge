@@ -39,7 +39,8 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     const { data } = await db().from('programs').select('*').eq('name', input.programName).maybeSingle()
     program = (data as Program) ?? null
   }
-  if (!program) return { ok: false, msg: '아직 등록되지 않은 프로그램입니다. 담당자에게 문의해 주세요.' }
+  // 내부 프로그램(기관관리자, 0007)은 신청을 받지 않는다
+  if (!program || program.internal) return { ok: false, msg: '아직 등록되지 않은 프로그램입니다. 담당자에게 문의해 주세요.' }
   // R3: 신청 페이지 표시와 같은 판정을 쓴다 (lib/assign.ts:applyAvailability)
   const avail = applyAvailability(program, today)
   if (avail.reason === '시작전') return { ok: false, msg: '아직 접수를 시작하지 않은 프로그램입니다.' }
