@@ -55,7 +55,8 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | R21 비밀번호 생성 | 폐지 — 접근 차단은 R24 ②「팀에서 제거」 체크 |
 | R22 알림 | `lib/alerts.ts` |
 | R23 비밀번호 변경 완료 | 폐지 — R24 ② 체크로 대체 |
-| R24 회수 체크 2개(대화·메모리 삭제 / 팀에서 제거)·재배정 | `lib/ops/assignments.ts:completeReturn` |
+| R24 회수 체크 2개(대화·메모리 삭제 / 팀에서 제거)·재배정 | `lib/ops/assignments.ts:completeReturn`, 일괄 `startReturns / completeReturns / cancelMany` (사용현황 목록) |
+| 사용현황 CSV 일괄 등록(사용중·회수완료) | `lib/usage-import.ts`(파싱·계획, 순수), `lib/ops/usage-import.ts`(실행), `app/admin/(protected)/assignments/UsageImport.tsx` |
 | R25 계정 통계 | `lib/assign.ts:assignedDaysOf`, `lib/ops/accounts.ts:refreshAccountStats` |
 | R26~R28 장애(정지율 표시만, 경고 폐지) | `lib/ops/incidents.ts` |
 | R29 실적·스냅샷 | `lib/report.ts`, `lib/cron/monthly.ts`, 뷰 `v_report_*`(0005: 사람 단위·취소 제외) |

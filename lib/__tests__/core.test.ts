@@ -388,3 +388,123 @@ describe('선택 승인 + 배정 + 이메일 내려받기', () => {
     expect(approveAssignMessage(3, 2, 1)).toBe('3명 승인 · 2명 배정 · 1명 계정 대기(「승인」으로 남음) — 내려받은 이메일을 팀 워크스페이스에 초대해 주세요.')
   })
 })
+
+describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
+  it('parsePlatform · parseYmd', async () => {
+    const { parsePlatform, parseYmd } = await import('@/lib/usage-import')
+    expect(parsePlatform('ChatGPT')).toBe('GPT')
+    expect(parsePlatform(' gpt ')).toBe('GPT')
+    expect(parsePlatform('Claude Team')).toBe('Claude')
+    expect(parsePlatform('Gemini')).toBeNull()
+    expect(parseYmd('2026. 10. 1.')).toBe('2026-10-01')
+    expect(parseYmd('20261029')).toBe('2026-10-29')
+    expect(parseYmd('2026/02/30')).toBe('invalid')
+    expect(parseYmd('')).toBeNull()
+  })
+
+  it('parseUsageCsv: 머리글 별칭·사용기간 분리·형식 오류', async () => {
+    const { parseUsageCsv } = await import('@/lib/usage-import')
+    const r = parseUsageCsv(
+      '﻿성명,E-mail,서비스,사용기간,계정\n홍길동,Hong@GNU.ac.kr,ChatGPT,2026-10-01~2026-12-31,gpt-003\n김,bad-mail,Gemini,,\n',
+    )
+    expect(r.error).toBeUndefined()
+    expect(r.rows[0]).toMatchObject({ line: 2, email: 'hong@gnu.ac.kr', service: 'GPT', start: '2026-10-01', end: '2026-12-31', account: 'GPT-003', errors: [] })
+    expect(r.rows[1].errors.join()).toContain('이메일 형식 오류')
+    expect(r.rows[1].errors.join()).toContain('Gemini')
+    expect(parseUsageCsv('이름,이메일\na,b@c.d').error).toContain('플랫폼')
+  })
+
+  it('내려받은 사용현황 CSV 를 그대로 올릴 수 있다 — 「구분」(교원 등)을 플랫폼으로 읽지 않는다', async () => {
+    const { parseUsageCsv } = await import('@/lib/usage-import')
+    const csv = applicantCsv([
+      {
+        id: 'A1', name: '홍길동', email: 'h@gnu.ac.kr', program_id: 'P26-01', service_wish: 'GPT', account_id: 'GPT-001', service: 'GPT',
+        status: '사용중', applied_at: '2026-10-01T00:00:00Z', rent_start: '2026-10-01', rent_end: null, acknowledged_at: null,
+        programs: { name: '연구모임(ChatGPT)' }, users: { affiliation: null, type: '교원' },
+      },
+    ])
+    const r = parseUsageCsv(csv)
+    expect(r.rows[0]).toMatchObject({ service: 'GPT', account: 'GPT-001', program: '연구모임(ChatGPT)', errors: [] })
+  })
+
+  it('planImport: 자동 계정·건너뜀·중복·계정 상태 검사', async () => {
+    const { parseUsageCsv, planImport, planSummary } = await import('@/lib/usage-import')
+    const { rows } = parseUsageCsv(
+      [
+        '이름,이메일,플랫폼,프로그램,계정번호',
+        'A,a@x.kr,Claude,연구모임(Claude),', // 자동 → CL-002 (CL-001 은 아래 행이 직접 지정)
+        'B,b@x.kr,Claude,,CL-001', // 기본 프로그램 사용
+        'C,c@x.kr,Claude,연구모임(Claude),', // 이미 사용중 → 건너뜀
+        'A,a@x.kr,Claude,연구모임(Claude),', // 파일 안 중복
+        'D,d@x.kr,GPT,없는프로그램,',
+        'E,e@x.kr,Claude,P26-24,CL-009', // 배정된 계정 지정 → 오류
+        'F,f@x.kr,Claude,P26-24,', // 가용 Claude 소진 → 오류
+      ].join('\n'),
+    )
+    const items = planImport(rows, {
+      mode: '사용중',
+      today: '2026-10-29',
+      defaultProgramId: 'P26-24',
+      programs: [{ id: 'P26-24', name: '연구모임(Claude)' }],
+      accounts: [
+        { id: 'CL-001', service: 'Claude', status: '가용', kind: '운영' },
+        { id: 'CL-002', service: 'Claude', status: '가용', kind: '운영' },
+        { id: 'CL-009', service: 'Claude', status: '배정', kind: '운영' },
+      ],
+      activeKeys: new Set(['c@x.kr|Claude']),
+      programEmailKeys: new Set(),
+    })
+    expect(items.map((x) => [x.action, x.accountId])).toEqual([
+      ['new', 'CL-002'],
+      ['new', 'CL-001'],
+      ['skip', null],
+      ['skip', null],
+      ['error', null],
+      ['error', null],
+      ['error', null],
+    ])
+    expect(items[0].start).toBe('2026-10-29')
+    expect(items[4].msg).toContain('없는프로그램')
+    expect(items[5].msg).toContain('가용 계정만')
+    expect(items[6].msg).toContain('가용 계정 부족')
+    expect(planSummary(items)).toBe('전체 7행 · 등록 2 · 건너뜀 2 · 오류 3')
+  })
+
+  it('planImport 회수완료: 계정 없어도 되고 종료일 기본값 오늘, 같은 프로그램 이력이 있으면 오류', async () => {
+    const { parseUsageCsv, planImport } = await import('@/lib/usage-import')
+    const { rows } = parseUsageCsv('이름,이메일,플랫폼,사용시작\nA,a@x.kr,GPT,2026-09-01\nB,b@x.kr,GPT,')
+    const items = planImport(rows, {
+      mode: '회수완료',
+      today: '2026-10-29',
+      defaultProgramId: 'P1',
+      programs: [{ id: 'P1', name: '연구모임(ChatGPT)' }],
+      accounts: [],
+      activeKeys: new Set(['a@x.kr|GPT']), // 회수완료 등록은 사용중 여부와 무관
+      programEmailKeys: new Set(['P1|b@x.kr']),
+    })
+    expect(items[0]).toMatchObject({ action: 'new', accountId: null, start: '2026-09-01', end: '2026-10-29' })
+    expect(items[1].action).toBe('error')
+  })
+
+  it('bulkMessage', async () => {
+    const { bulkMessage } = await import('@/lib/ops/export')
+    expect(bulkMessage('회수 시작', { done: 2, skipped: 1, errors: [] })).toBe('회수 시작 2건 · 상태가 맞지 않아 건너뜀 1건')
+    expect(bulkMessage('취소', { done: 0, skipped: 0, errors: ['A1: x'] })).toBe('취소 0건 · 오류 1건 (A1: x)')
+  })
+})
+
+describe('사용현황 CSV — 플랫폼별 프로그램 불일치', () => {
+  it('ChatGPT 행을 「…(Claude)」 프로그램에 넣으면 오류', async () => {
+    const { parseUsageCsv, planImport } = await import('@/lib/usage-import')
+    const { rows } = parseUsageCsv('이름,이메일,플랫폼\nA,a@x.kr,ChatGPT\nB,b@x.kr,Claude')
+    const items = planImport(rows, {
+      mode: '사용중', today: '2026-10-29', defaultProgramId: 'P3',
+      programs: [{ id: 'P3', name: '연구모임(Claude)' }],
+      accounts: [{ id: 'CL-001', service: 'Claude', status: '가용', kind: '운영' }, { id: 'GPT-001', service: 'GPT', status: '가용', kind: '운영' }],
+      activeKeys: new Set(), programEmailKeys: new Set(),
+    })
+    expect(items[0].action).toBe('error')
+    expect(items[0].msg).toContain('Claude 전용')
+    expect(items[1]).toMatchObject({ action: 'new', accountId: 'CL-001' })
+  })
+})
