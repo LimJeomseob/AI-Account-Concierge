@@ -9,7 +9,7 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { db } from '@/lib/db'
 import { log } from '@/lib/state'
-import { AUTH_COOKIE_NAME, serverSupabaseUrl } from '@/lib/auth-cookie'
+import { AUTH_COOKIE_NAME, emailFromClaims, serverSupabaseUrl } from '@/lib/auth-cookie'
 
 export function authEnv() {
   // 서버 전용 주소(SUPABASE_URL)가 있으면 그 주소로 Supabase 에 접근한다.
@@ -46,9 +46,11 @@ export async function authClient() {
 export const sessionEmail = cache(async (): Promise<string | null> => {
   try {
     const supabase = await authClient()
-    const { data } = await supabase.auth.getUser()
-    const email = data.user?.email
-    return email ? email.toLowerCase() : null
+    // getClaims: 비대칭 서명 키(JWKS) 프로젝트면 토큰을 로컬에서 검증해 Supabase 왕복이 없다.
+    // 대칭 키(HS256)면 라이브러리가 getUser() 로 서버 검증한다 — 보안 수준은 그대로.
+    const { data, error } = await supabase.auth.getClaims()
+    if (error) return null
+    return emailFromClaims(data?.claims)
   } catch {
     return null
   }
