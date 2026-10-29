@@ -480,7 +480,7 @@ describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
       programs: [{ id: 'P1', name: '연구모임(ChatGPT)' }],
       accounts: [],
       activeKeys: new Set(['a@x.kr|GPT']), // 회수완료 등록은 사용중 여부와 무관
-      programEmailKeys: new Set(['P1|b@x.kr']),
+      programEmailKeys: new Set(['P1|b@x.kr|GPT']),
     })
     expect(items[0]).toMatchObject({ action: 'new', accountId: null, start: '2026-09-01', end: '2026-10-29' })
     expect(items[1].action).toBe('error')
@@ -506,5 +506,25 @@ describe('사용현황 CSV — 플랫폼별 프로그램 불일치', () => {
     expect(items[0].action).toBe('error')
     expect(items[0].msg).toContain('Claude 전용')
     expect(items[1]).toMatchObject({ action: 'new', accountId: 'CL-001' })
+  })
+})
+
+describe('사용현황 CSV — 플랫폼별 중복 기준(0008)·고정기간 종료일', () => {
+  it('같은 프로그램이라도 다른 플랫폼이면 등록, 같은 플랫폼이면 오류', async () => {
+    const { parseUsageCsv, planImport } = await import('@/lib/usage-import')
+    const { rows } = parseUsageCsv('이름,이메일,플랫폼\nS,s@x.kr,ChatGPT\nS,s@x.kr,Claude\nT,t@x.kr,Claude')
+    const items = planImport(rows, {
+      mode: '사용중', today: '2026-10-29', defaultProgramId: 'P5',
+      programs: [{ id: 'P5', name: '초·중·고급 AI활용 연구모임 운영', mode: '고정기간', end_on: '2026-11-12' }],
+      accounts: [
+        { id: 'CL-001', service: 'Claude', status: '가용', kind: '운영' },
+        { id: 'GPT-001', service: 'GPT', status: '가용', kind: '운영' },
+      ],
+      activeKeys: new Set(),
+      programEmailKeys: new Set(['P5|t@x.kr|Claude']),
+    })
+    expect(items.map((x) => x.action)).toEqual(['new', 'new', 'error'])
+    expect(items[0]).toMatchObject({ accountId: 'GPT-001', end: '2026-11-12' })
+    expect(items[1]).toMatchObject({ accountId: 'CL-001', end: '2026-11-12' })
   })
 })

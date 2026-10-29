@@ -26,7 +26,7 @@ export interface ImportRow {
 export const MAX_IMPORT_ROWS = 1000
 
 export const IMPORT_TEMPLATE =
-  '﻿이름,이메일,플랫폼,프로그램,계정번호,사용시작,사용종료\n홍길동,hong@gnu.ac.kr,Claude,연구모임(Claude),,2026-10-01,\n'
+  '﻿이름,이메일,플랫폼,프로그램,계정번호,사용시작,사용종료\n홍길동,hong@gnu.ac.kr,Claude,초·중·고급 AI활용 연구모임 운영,,2026-10-01,\n'
 
 const HEADER_ALIASES: Record<string, string[]> = {
   name: ['이름', '성명', 'name'],
@@ -153,11 +153,12 @@ export interface PlanContext {
   today: string
   /** CSV 에 프로그램이 비어 있을 때 쓸 프로그램 번호 */
   defaultProgramId: string | null
-  programs: Array<{ id: string; name: string }>
+  /** mode·end_on 이 있으면 「사용중」 등록의 사용종료 기본값으로 고정기간 프로그램의 종료일을 쓴다(R2) */
+  programs: Array<{ id: string; name: string; mode?: string | null; end_on?: string | null }>
   accounts: Array<{ id: string; service: string; status: string; kind: string }>
   /** 「이메일|플랫폼」 — 이미 배정·사용중·회수중인 조합 */
   activeKeys: Set<string>
-  /** 「프로그램|이메일」 — 같은 프로그램에 신청~회수완료 건이 이미 있는 조합(R9 중복 방지 인덱스) */
+  /** 「프로그램|이메일|플랫폼」 — 같은 프로그램·플랫폼에 신청~회수완료 건이 이미 있는 조합(R9 중복 방지 인덱스, 0008) */
   programEmailKeys: Set<string>
 }
 
@@ -192,6 +193,12 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
   // 계정번호를 직접 적은 행이 먼저 그 계정을 쓰도록 미리 예약
   if (ctx.mode === '사용중') for (const r of rows) if (r.account && r.errors.length === 0) reserved.add(r.account)
 
+  // 고정기간 프로그램의 종료일 — 「사용중」 등록에서 사용종료가 비면 이 날짜로 둔다(R2·R20)
+  const fixedEnd = (programId: string | null) => {
+    const p = ctx.programs.find((x) => x.id === programId)
+    return p?.mode === '고정기간' ? p.end_on ?? null : null
+  }
+
   return rows.map((r) => {
     const program = r.program ? byId.get(r.program.toUpperCase()) ?? byName.get(r.program.trim().toLowerCase()) : undefined
     const programId = program?.id ?? (r.program ? null : ctx.defaultProgramId)
@@ -205,7 +212,7 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
       programName,
       accountId: null as string | null,
       start: ctx.mode === '사용중' ? r.start ?? ctx.today : r.start,
-      end: ctx.mode === '회수완료' ? r.end ?? ctx.today : r.end,
+      end: ctx.mode === '회수완료' ? r.end ?? ctx.today : r.end ?? fixedEnd(programId),
     }
     const fail = (msg: string): PlanItem => ({ ...base, action: 'error', msg })
     if (r.errors.length > 0) return fail(r.errors.join(' · '))
@@ -217,12 +224,12 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
     }
 
     const activeKey = `${r.email}|${r.service}`
-    const programKey = `${programId}|${r.email}`
+    const programKey = `${programId}|${r.email}|${r.service}`
     if (ctx.mode === '사용중' && (ctx.activeKeys.has(activeKey) || seenActive.has(activeKey))) {
       return { ...base, action: 'skip', msg: seenActive.has(activeKey) ? '파일 안에서 같은 이메일·플랫폼 중복' : '이미 사용중 — 건너뜀' }
     }
-    if (ctx.programEmailKeys.has(programKey)) return fail('같은 프로그램에 이 이메일의 신청~회수완료 건이 이미 있음(R9)')
-    if (seenProgram.has(programKey)) return fail('파일 안에서 같은 프로그램·이메일 중복')
+    if (ctx.programEmailKeys.has(programKey)) return fail('같은 프로그램·플랫폼에 이 이메일의 신청~회수완료 건이 이미 있음(R9)')
+    if (seenProgram.has(programKey)) return fail('파일 안에서 같은 프로그램·이메일·플랫폼 중복')
 
     let accountId: string | null = null
     if (r.account) {

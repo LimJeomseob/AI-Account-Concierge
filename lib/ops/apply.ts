@@ -49,14 +49,16 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
   const period = periodFor(program, today)
 
   // R9: 이메일 소문자 정규화 + 같은 프로그램 활성 중복 거부
+  // (공개 신청은 프로그램당 1회. DB 인덱스는 0008 부터 플랫폼별이라 한 사람이 두 플랫폼 건을 가질 수 있어 limit(1)로 읽는다)
   const email = input.email.trim().toLowerCase()
-  const { data: dup } = await db()
+  const { data: dups } = await db()
     .from('assignments')
     .select('id')
     .eq('program_id', program.id)
     .eq('email', email)
     .in('status', ACTIVE)
-    .maybeSingle()
+    .limit(1)
+  const dup = dups?.[0]
   if (dup) return { ok: false, msg: '이미 같은 프로그램에 신청하셨습니다. (접수번호 ' + dup.id + ')' }
 
   // R10: users upsert
