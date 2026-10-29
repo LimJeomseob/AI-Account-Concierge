@@ -82,9 +82,18 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
           <h1 className="text-xl font-bold text-[var(--gnu-navy)]">{L.menu.assignments}</h1>
           <p className="text-sm text-slate-500">서비스별 계정 현황과 신청·승인·배정·회수를 한 화면에서 처리합니다.</p>
         </div>
-        <p className="text-sm text-slate-500">
-          {hasFilter ? '조건에 맞는' : '전체'} {list.length}건{list.length >= 500 ? ' (최근 500건까지 표시)' : ''}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-slate-500">
+            {hasFilter ? '조건에 맞는' : '전체'} {list.length}건{list.length >= 500 ? ' (최근 500건까지 표시)' : ''}
+          </p>
+          {/* 현재 조회 조건 그대로 내려받는다(화면 표시 500건 제한 없이 최대 5000건) */}
+          <a
+            href={exportHref}
+            className="rounded-md bg-gnu-navy px-3 py-2 text-sm font-semibold text-white hover:bg-gnu-navy-dark"
+          >
+            {L.assignment.export_csv}
+          </a>
+        </div>
       </header>
 
       {rowsError && (

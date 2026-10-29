@@ -30,7 +30,7 @@ export const L = {
     acknowledged_at: '사용개시',
     returned_at: '회수완료',
     note: '비고',
-    export_csv: 'CSV 내려받기',
+    export_csv: '사용현황 CSV 내려받기',
     copy_emails: '이메일만 복사',
   },
   checklist: {

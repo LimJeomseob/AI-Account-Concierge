@@ -1,4 +1,4 @@
-/** 신청자 목록 CSV 다운로드 (관리자 전용) — 신청·배정 화면의 현재 필터를 그대로 적용 */
+/** 유료계정 사용현황 CSV 다운로드 (관리자 전용) — 사용현황 화면의 현재 조회 조건을 그대로 적용 */
 import { db } from '@/lib/db'
 import { requireAdminAction } from '@/lib/auth'
 import { todayKST } from '@/lib/date'
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     search: f.name || f.email || f.account ? '(이름·이메일·계정번호 조건)' : '',
   })
 
-  const name = `applicants-${todayKST().replace(/-/g, '')}.csv`
+  const name = `usage-${todayKST().replace(/-/g, '')}.csv`
   return new Response(applicantCsv(rows), {
     headers: {
       'content-type': 'text/csv; charset=utf-8',
