@@ -17,51 +17,42 @@ ChatGPT Business Standard 45 + Claude Team 71 계정(계정번호 GPT-001·CL-00
 | 메일 | Gmail SMTP — nodemailer, 앱 비밀번호 (대기열 경유 발송) |
 | 배치 | Vercel Cron — 매일 09:00 KST, 매월 1일 |
 
-## 설치
+## 운영 환경 (클라우드 전용, 2026-10-29)
 
-```bash
-npm install
-cp .env.example .env.local     # 값 채우기
-```
+로컬 실행은 하지 않는다. Vercel + Supabase 클라우드에서만 구동한다.
 
-환경변수:
+- **접속 주소:** https://ai-account-concierge.vercel.app — 코드에 고정(`lib/site.ts`).
+  운영 배포에 다른 `*.vercel.app` 주소로 들어오면 이 주소로 이동한다(`/api` 제외).
+- **배포:** GitHub `main` 에 합치면 Vercel 이 자동 배포한다. 절차 전체는 [`docs/배포체크리스트.md`](docs/배포체크리스트.md).
+- **검사:** PR 마다 GitHub Actions CI 가 타입 검사·단위 테스트·빌드를 실행한다.
+
+Vercel 환경변수 (Production·Preview 모두, 이름 예시는 `.env.example`):
 
 | 이름 | 설명 |
 |---|---|
-| `NEXT_PUBLIC_APP_URL` | 배포 주소 (메일 링크 생성에 사용) |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 DB 접근 |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 브라우저 Auth 전용 |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | 메일 발송 — 발신 Gmail 계정과 16자리 앱 비밀번호 (하나라도 없으면 대기열에 보관만) |
 | `APP_SECRET` | 장애 신고 링크 HMAC 서명 키 — `openssl rand -hex 32` |
-| `CRON_SECRET` | Cron 엔드포인트 인증 — `openssl rand -hex 32` |
-| `INITIAL_ADMIN_EMAIL` | 시드로 등록할 최초 관리자 |
+| `CRON_SECRET` | Cron 엔드포인트 인증(필수) — `openssl rand -hex 32` |
+| `INITIAL_ADMIN_EMAIL` | (선택) `admins` 가 비어 있을 때 첫 로그인으로 자동 등록할 관리자 |
 
-## 초기 구축
+## 초기 구축 (모두 웹 화면에서)
 
-```bash
-# 1) 스키마 — 0001 부터 번호 순서로 모두 적용 (각 파일 멱등, 이미 적용한 DB 에 다시 돌려도 안전)
-#    0002·0003 은 enum ADD VALUE 때문에 문장별 커밋이 필요하므로 psql 로 실행한다
-#    (SQL Editor 는 한 트랜잭션으로 묶을 수 있어 0001 에만 안전)
-for f in supabase/migrations/0*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 < "$f"; done
+1. **스키마:** Supabase 대시보드 > SQL Editor 에 `supabase/migrations/0001`~`0008` 을 번호 순서대로 붙여 넣어 실행한다(각 파일 멱등).
+   0002·0003 은 enum 값 추가가 있어, 한 번에 실행해 오류가 나면 파일 안 문장을 위에서부터 나눠 실행한다.
+2. **Google 로그인:** Supabase > Authentication > URL Configuration 의 Site URL 을 `https://ai-account-concierge.vercel.app`,
+   Redirect URLs 에 `https://ai-account-concierge.vercel.app/auth/callback` 을 등록한다.
+3. **최초 관리자:** `INITIAL_ADMIN_EMAIL` 계정으로 로그인하면 자동 등록된다. 이후 관리자는 설정 > 로그인 허용 관리자에서 추가한다.
+4. **프로그램:** 관리자 화면 「프로그램 > 하반기 24개 일괄 등록」.
+5. **계정:** 관리자 화면 「계정 > CSV 가져오기」 (헤더: 계정번호,서비스,구분,로그인이메일,활성화일,만료일).
 
-# 2) 시드 (설정·메일 템플릿·최초 관리자 [+ 프로그램 24개, 샘플 계정])
-npx tsx scripts/seed.ts --programs --sample-accounts
-
-# 3) 계정 등록 (ChatGPT 45 · Claude 71)
-npx tsx scripts/import-accounts.ts accounts.csv
-#    헤더: 계정번호,서비스,구분,로그인이메일,활성화일,만료일
-
-# 4) 실행
-npm run dev        # http://localhost:3000/admin
-```
-
-Supabase 대시보드에서 Google Provider 를 켜고, 리디렉션 URL 에
-`<배포주소>/auth/callback` 을 등록한다.
+`scripts/seed.ts`·`scripts/import-accounts.ts` 는 로컬용 대체 수단이라 운영에서는 쓰지 않는다.
 
 ## 신청 페이지 연결
 
 `public/signup-snippet.html` 을 기존 GitHub Pages 에 붙여 넣고,
-파일 안 `API_BASE` 를 배포 주소로 바꾼다. 관리자 화면 「설정 > CORS 허용 오리진」에
+파일 안 `API_BASE` 는 고정 주소(`https://ai-account-concierge.vercel.app`)로 이미 맞춰져 있다. 관리자 화면 「설정 > CORS 허용 오리진」에
 GitHub Pages 오리진을 등록해야 요청이 통과한다.
 GitHub Pages 장애 시 대체용으로 같은 기능의 `/apply` 페이지를 제공한다.
 

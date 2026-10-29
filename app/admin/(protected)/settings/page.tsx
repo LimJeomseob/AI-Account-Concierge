@@ -50,7 +50,11 @@ export default async function SettingsPage() {
         </form>
       </Card>
 
-      <Card title="관리자">
+      <Card title="로그인 허용 관리자">
+        <p className="mb-3 text-xs text-slate-600">
+          여기에 등록된 Google 계정만 관리자 페이지에 들어올 수 있습니다. 등록되면 다음 접속(새로고침) 때 바로 대시보드로 이동합니다.
+          「관리자 메일 수신자」 란은 메일 수신용이며 로그인 권한과 무관합니다.
+        </p>
         <Table head={['이메일', '이름', '등록일', '']}>
           {(admins ?? []).map((a) => (
             <tr key={a.email}>

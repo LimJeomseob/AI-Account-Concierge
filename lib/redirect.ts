@@ -6,7 +6,7 @@ export const DEFAULT_AFTER_LOGIN = '/admin/dashboard'
 
 /**
  * 콜백 뒤 이동할 기준 주소.
- * 로그인을 시작한 주소(= 세션 쿠키가 저장되는 주소)로 돌아가야 한다. NEXT_PUBLIC_APP_URL 을 먼저 쓰면
+ * 로그인을 시작한 주소(= 세션 쿠키가 저장되는 주소)로 돌아가야 한다. 고정 주소(lib/site.ts)를 먼저 쓰면
  * 접속 주소와 다를 때(미리보기·별칭 도메인·www 유무) 쿠키가 없는 주소로 보내져 다시 로그인해야 했다.
  */
 export function appBase(
@@ -30,6 +30,18 @@ export function appBase(
 export function safeNext(next: string | null | undefined): string {
   if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return DEFAULT_AFTER_LOGIN
   return next
+}
+
+/**
+ * 세션·허용 여부에 따른 착지 경로 (순수 함수, PRD §7-2·§13)
+ * 로그인 화면·권한 없음 화면·로그인 콜백이 같은 규칙을 쓴다.
+ *  - 미로그인 → 로그인 화면
+ *  - 설정 > 관리자(admins 표)에 등록된 계정 → 관리자 페이지(next, 기본 대시보드)
+ *  - 그 외 → 권한 없음
+ */
+export function landingFor(email: string | null | undefined, admin: boolean, next?: string | null): string {
+  if (!email) return '/admin/login'
+  return admin ? safeNext(next) : '/admin/denied'
 }
 
 /**

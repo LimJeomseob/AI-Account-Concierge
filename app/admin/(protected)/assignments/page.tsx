@@ -17,6 +17,7 @@ import { applyFilter, exportQuery, parseFilter, type ApplicantFilter } from '@/l
 import { getSettings } from '@/lib/settings'
 import { supportStatus } from '@/lib/report'
 import { hasSecret, tryIncidentUrl } from '@/lib/token'
+import { APP_URL } from '@/lib/site'
 import {
   bulkApproveAction,
   bulkCancelAction,
@@ -79,7 +80,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
     for (const x of secs ?? []) loginEmails.set(x.account_id, x.login_email)
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  const appUrl = APP_URL
   const secretMissing = !hasSecret()
   const emails = applicantEmails(list)
   const exportHref = `/api/admin/assignments/export${exportQuery(f)}`
