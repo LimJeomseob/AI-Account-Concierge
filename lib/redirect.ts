@@ -33,6 +33,24 @@ export function safeNext(next: string | null | undefined): string {
 }
 
 /**
+ * 첫 화면(/)에 도착한 로그인 결과를 콜백으로 넘길 경로 (순수 함수)
+ * Supabase 는 redirectTo 를 쓸 수 없을 때 Site URL(첫 화면)로 `?code=` 나 `?error=` 를 붙여 되돌린다.
+ * 첫 화면이 이를 무시하면 로그인이 끝나지 않고 첫 화면에 멈추므로 /auth/callback 으로 그대로 넘긴다.
+ * 로그인 결과가 없으면 null (첫 화면을 그대로 보여 준다).
+ */
+export function authForwardPath(params: Record<string, string | string[] | undefined>): string | null {
+  const keys = ['code', 'error', 'error_code', 'error_description']
+  if (!keys.some((k) => typeof params[k] === 'string' && params[k] !== '')) return null
+  const q = new URLSearchParams()
+  for (const k of keys) {
+    const v = params[k]
+    if (typeof v === 'string' && v !== '') q.set(k, v)
+  }
+  q.set('next', DEFAULT_AFTER_LOGIN)
+  return `/auth/callback?${q.toString()}`
+}
+
+/**
  * 세션·허용 여부에 따른 착지 경로 (순수 함수, PRD §7-2·§13)
  * 로그인 화면·권한 없음 화면·로그인 콜백이 같은 규칙을 쓴다.
  *  - 미로그인 → 로그인 화면

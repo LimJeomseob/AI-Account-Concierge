@@ -305,6 +305,17 @@ describe('로그인 콜백 주소 (두 번 로그인 방지)', () => {
     expect(appBase(h({ 'x-forwarded-host': 'a.example.kr', 'x-forwarded-proto': 'https' }), 'http://localhost/x', 'https://b.example.kr')).toBe('https://a.example.kr')
     expect(appBase(h({}), 'https://c.example.kr/auth/callback', 'https://b.example.kr')).toBe('https://c.example.kr')
   })
+  it('authForwardPath: 첫 화면에 온 로그인 결과(code·error)만 콜백으로 넘긴다', async () => {
+    const { authForwardPath } = await import('@/lib/redirect')
+    expect(authForwardPath({})).toBeNull()
+    expect(authForwardPath({ code: '' })).toBeNull()
+    expect(authForwardPath({ foo: 'bar' })).toBeNull()
+    expect(authForwardPath({ code: 'abc-123' })).toBe('/auth/callback?code=abc-123&next=%2Fadmin%2Fdashboard')
+    expect(authForwardPath({ error: 'access_denied', error_description: 'Signups not allowed', foo: 'x' })).toBe(
+      '/auth/callback?error=access_denied&error_description=Signups+not+allowed&next=%2Fadmin%2Fdashboard',
+    )
+    expect(authForwardPath({ code: ['a', 'b'] })).toBeNull()
+  })
   it('landingFor: 등록된 관리자는 관리자 페이지로 바로, 미등록은 권한 없음, 미로그인은 로그인', async () => {
     const { landingFor } = await import('@/lib/redirect')
     expect(landingFor(null, false)).toBe('/admin/login')
