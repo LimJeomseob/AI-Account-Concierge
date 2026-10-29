@@ -25,9 +25,10 @@ export async function middleware(req: NextRequest) {
       },
     },
   })
-  // 세션 쿠키 갱신. Supabase 에 닿지 못해도 요청을 막지 않는다.
+  // 세션 쿠키 갱신(만료 시 refresh). getClaims 는 비대칭 서명 키면 로컬 검증이라 매 요청 왕복이 없다.
+  // Supabase 에 닿지 못해도 요청을 막지 않는다.
   try {
-    await supabase.auth.getUser()
+    await supabase.auth.getClaims()
   } catch {
     // 무시 — 권한 판정은 서버 컴포넌트에서 다시 한다.
   }

@@ -323,3 +323,13 @@ describe('일괄 처리 묶음 (승인 속도 개선)', () => {
     expect(chunk([1, 2], 0)).toEqual([[1], [2]])
   })
 })
+
+describe('로그인 확인 — JWT 클레임에서 이메일 (getClaims)', () => {
+  it('emailFromClaims: 문자열 이메일만 소문자로', async () => {
+    const { emailFromClaims } = await import('@/lib/auth-cookie')
+    expect(emailFromClaims({ email: 'Eros@Example.com' })).toBe('eros@example.com')
+    expect(emailFromClaims({ email: '' })).toBeNull()
+    expect(emailFromClaims({ email: 123 })).toBeNull()
+    expect(emailFromClaims(null)).toBeNull()
+  })
+})

@@ -18,3 +18,9 @@ export function serverSupabaseUrl(): string {
   if (!url) throw new Error('SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL 환경변수가 없습니다.')
   return url
 }
+
+/** 검증된 JWT 클레임 → 로그인 이메일(소문자). 이메일이 없으면 null (순수 함수) */
+export function emailFromClaims(claims: { email?: unknown } | null | undefined): string | null {
+  const email = claims?.email
+  return typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : null
+}
