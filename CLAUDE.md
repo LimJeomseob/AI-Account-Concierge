@@ -44,7 +44,8 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | R4 프로그램 자동 종료 | 폐지 — 상태(시작전·진행중·완료) 전환은 관리자 드롭다운 수동 `app/admin/actions.ts:programStatusAction` |
 | R5 배정상한 | `lib/assign.ts:capRemaining` |
 | R7~R11 신청 접수 | `lib/ops/apply.ts`, `app/api/public/apply` |
-| R12·R14 배정 = 「승인 건 배정 + 메일 내려받기」만 (자동 배정 폐지 2026-10-29) | `lib/ops/assignments.ts:assignApprovedForExport` → `autoAssignProgram`, `lib/assign.ts:planAllocations`, `app/admin/actions.ts:assignExportAction`, `lib/ops/export.ts:assignedCsv` |
+| R12·R14 배정 = 유료계정 사용현황의 「선택 승인 + 배정 + 이메일 내려받기」·「승인 대기 일괄 배정」만 (자동 배정 폐지 2026-10-29) | `lib/ops/assignments.ts:assignApprovedForExport` → `autoAssignProgram`, `lib/assign.ts:planAllocations`, `app/admin/actions.ts:approveAssignExportAction / assignExportAction`, `lib/ops/export.ts:assignedCsv` |
+| 사용현황 필터(전체·상태·프로그램·플랫폼·이름·이메일·계정번호) | `lib/filter.ts` — 목록·CSV·배정 공통 |
 | R14-2 접속 링크 | 폐지(2026-10-29) — 배정 풀은 가용 ∧ 운영 (`availablePool`, `program_availability` 뷰 0006) |
 | R13·R17 승인·취소 (반려 폐지 2026-10-29) | `lib/ops/assignments.ts` |
 | R16 배정안내 메일 | 폐지(2026-10-28) — 내려받은 이메일로 워크스페이스 초대 |

@@ -22,12 +22,7 @@ export interface ApplicantRow {
   users?: { affiliation: string | null; type: string } | null
 }
 
-/** 신청·배정 화면과 동일한 필터 (assignments/page.tsx) */
-export interface ApplicantFilter {
-  status?: string
-  program?: string
-  q?: string
-}
+export { FILTER_KEYS, applyFilter, exportQuery, likePattern, parseFilter, type ApplicantFilter } from '@/lib/filter'
 
 export const APPLICANT_SELECT =
   'id, name, email, program_id, service_wish, account_id, service, status, applied_at, rent_start, rent_end, programs(name), users(affiliation, type)'
@@ -78,19 +73,18 @@ export function applicantEmails(rows: Array<Pick<ApplicantRow, 'email'>>): strin
   return [...seen]
 }
 
-/** 필터 → 내려받기 URL 쿼리 (빈 값은 생략) */
-export function exportQuery(f: ApplicantFilter): string {
-  const p = new URLSearchParams()
-  if (f.status) p.set('status', f.status)
-  if (f.program) p.set('program', f.program)
-  if (f.q) p.set('q', f.q)
-  const s = p.toString()
-  return s ? `?${s}` : ''
+/** 「승인 건 배정 + 메일 내려받기」 결과 CSV — 이름·이메일·계정번호 (팀 워크스페이스 초대용).
+ *  계정번호가 없으면(가용 계정 부족으로 승인 대기) 「(대기)」로 적는다 */
+export function assignedCsv(rows: Array<{ name: string; email: string; account_id: string | null }>): string {
+  return toCsv(['이름', '이메일', '계정번호'], rows.map((r) => [r.name, r.email, r.account_id ?? '(대기)']))
 }
 
-/** 「승인 건 배정 + 메일 내려받기」 결과 CSV — 이름·이메일·계정번호 (팀 워크스페이스 초대용) */
-export function assignedCsv(rows: Array<{ name: string; email: string; account_id: string }>): string {
-  return toCsv(['이름', '이메일', '계정번호'], rows.map((r) => [r.name, r.email, r.account_id]))
+/** 「선택 승인 + 배정 + 이메일 내려받기」 결과 문구 (순수 함수) */
+export function approveAssignMessage(approved: number, assigned: number, waiting: number): string {
+  if (approved === 0 && assigned === 0) return '선택한 건 중 승인할 「신청」 건이 없습니다.'
+  const parts = [`${approved}명 승인`, `${assigned}명 배정`]
+  if (waiting > 0) parts.push(`${waiting}명 계정 대기(「승인」으로 남음)`)
+  return `${parts.join(' · ')} — 내려받은 이메일을 팀 워크스페이스에 초대해 주세요.`
 }
 
 /** 배정 결과 안내 문구 (순수 함수) */

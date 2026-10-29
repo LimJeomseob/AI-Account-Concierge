@@ -323,7 +323,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     ids.a4 = applied.id
 
     await M.assignments.approveAssignments([ids.a4], 'acceptance@test', today)
-    await M.assignments.assignApprovedForExport({ q: ids.a4 }, 'acceptance@test', today, SCOPE)
+    await M.assignments.assignApprovedForExport({ email: mail(4) }, 'acceptance@test', today, SCOPE)
     const { data: before } = await M.db.db().from('assignments').select('status, account_id').eq('id', ids.a4).single()
     if (before?.status !== '사용중') return // 가용 Claude 가 없으면 이 시나리오는 건너뛴다
 

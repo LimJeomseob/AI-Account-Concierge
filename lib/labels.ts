@@ -5,7 +5,7 @@ export const L = {
   org: '경상국립대학교 AI융합원',
   menu: {
     dashboard: '대시보드',
-    assignments: '신청·배정',
+    assignments: '유료계정 사용현황',
     programs: '프로그램',
     accounts: '계정',
     users: '사용자',

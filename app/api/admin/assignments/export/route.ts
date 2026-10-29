@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireAdminAction } from '@/lib/auth'
 import { todayKST } from '@/lib/date'
 import { log } from '@/lib/state'
-import { APPLICANT_SELECT, applicantCsv, type ApplicantRow } from '@/lib/ops/export'
+import { APPLICANT_SELECT, applicantCsv, applyFilter, parseFilter, type ApplicantRow } from '@/lib/ops/export'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,21 +16,24 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url)
-  const status = url.searchParams.get('status') ?? ''
-  const program = url.searchParams.get('program') ?? ''
-  const q = url.searchParams.get('q') ?? ''
-
-  let query = db().from('assignments').select(APPLICANT_SELECT).order('applied_at', { ascending: false }).limit(5000)
-  if (status) query = query.eq('status', status)
-  if (program) query = query.eq('program_id', program)
-  if (q) query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,id.ilike.%${q}%`)
+  const f = parseFilter((k) => url.searchParams.get(k))
+  const query = applyFilter(
+    db().from('assignments').select(APPLICANT_SELECT).order('applied_at', { ascending: false }).limit(5000),
+    f,
+  )
 
   const { data, error } = await query
   if (error) return new Response(error.message, { status: 500 })
 
   const rows = (data ?? []) as unknown as ApplicantRow[]
   // R31: 건수와 필터만 기록 — 이메일 등 개인정보는 로그에 남기지 않는다
-  await log(actor, 'assignments.export', null, { count: rows.length, status, program, q: q ? '(검색어)' : '' })
+  await log(actor, 'assignments.export', null, {
+    count: rows.length,
+    status: f.status ?? '',
+    program: f.program ?? '',
+    service: f.service ?? '',
+    search: f.name || f.email || f.account ? '(이름·이메일·계정번호 조건)' : '',
+  })
 
   const name = `applicants-${todayKST().replace(/-/g, '')}.csv`
   return new Response(applicantCsv(rows), {
