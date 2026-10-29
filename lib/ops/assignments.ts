@@ -5,7 +5,7 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
-import { capRemaining, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
+import { capRemaining, chunk, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
 import { claimAccount, log, releaseClaim, transitionAccount, transitionAssignment } from '@/lib/state'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
 import type { Program, Service } from '@/lib/types'
@@ -151,20 +151,27 @@ export async function approveAssignments(
   actor: string,
   today: string = todayKST(),
 ): Promise<{ approved: number }> {
-  let approved = 0
+  if (ids.length === 0) return { approved: 0 }
+  // 대상 건을 한 번에 읽고(건별 조회 제거), 상태 전이는 10건씩 동시에 보낸다.
+  // 전이는 조건부 갱신(신청일 때만)이라 동시에 보내도 중복 승인되지 않는다(R13).
+  const { data: rows } = await db().from('assignments').select('id, status').in('id', ids)
+  const targets = (rows ?? []).filter((r) => r.status === '신청').map((r) => r.id as string)
 
-  for (const id of ids) {
-    const { data: row } = await db().from('assignments').select('program_id, status').eq('id', id).single()
-    if (!row || row.status !== '신청') continue
-    const ok = await transitionAssignment({
-      id,
-      to: '승인',
-      actor,
-      action: 'assignment.approve',
-      expect: ['신청'],
-      patch: { approved_on: today, approved_by: actor },
-    })
-    if (ok) approved += 1
+  let approved = 0
+  for (const batch of chunk(targets, 10)) {
+    const results = await Promise.all(
+      batch.map((id) =>
+        transitionAssignment({
+          id,
+          to: '승인',
+          actor,
+          action: 'assignment.approve',
+          expect: ['신청'],
+          patch: { approved_on: today, approved_by: actor },
+        }),
+      ),
+    )
+    approved += results.filter(Boolean).length
   }
   return { approved }
 }

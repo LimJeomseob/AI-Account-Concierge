@@ -56,30 +56,8 @@ export function Td({ children, className = '' }: { children?: ReactNode; classNa
   return <td className={`border-b border-gnu-line px-3 py-2.5 align-middle ${className}`}>{children}</td>
 }
 
-export function Button({
-  children,
-  variant = 'primary',
-  size = 'md',
-  ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'ghost' | 'danger'
-  size?: 'sm' | 'md'
-}) {
-  const base =
-    'inline-flex items-center justify-center rounded-md font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gnu-blue/40'
-  const sizing = size === 'sm' ? 'px-3 py-1.5 text-[13px]' : 'px-4 py-2 text-sm'
-  const style =
-    variant === 'primary'
-      ? 'bg-gnu-navy text-white hover:bg-gnu-navy-dark'
-      : variant === 'danger'
-        ? 'border border-red-300 bg-white text-red-700 hover:bg-red-50'
-        : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-  return (
-    <button {...rest} className={`${base} ${sizing} ${style} ${rest.className ?? ''}`}>
-      {children}
-    </button>
-  )
-}
+// 버튼은 폼 처리 중 표시가 필요해 클라이언트 컴포넌트로 분리했다
+export { Button } from './Button'
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

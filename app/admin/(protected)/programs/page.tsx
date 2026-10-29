@@ -10,11 +10,13 @@ import type { Program } from '@/lib/types'
 export const dynamic = 'force-dynamic'
 
 export default async function ProgramsPage() {
-  const { data: programs } = await db().from('programs').select('*').order('id')
-  const { data: avail } = await db().from('program_availability').select('*')
+  const [{ data: programs }, { data: avail }, { data: counts }] = await Promise.all([
+    db().from('programs').select('*').order('id'),
+    db().from('program_availability').select('*'),
+    db().from('assignments').select('program_id, status'),
+  ])
   const availMap = new Map((avail ?? []).map((a) => [a.program_id, a]))
 
-  const { data: counts } = await db().from('assignments').select('program_id, status')
   const used = new Map<string, number>()
   for (const c of counts ?? []) {
     if (['배정', '사용중', '회수중', '회수완료'].includes(c.status)) {

@@ -8,12 +8,11 @@ import { snapshotNowAction } from '@/app/admin/actions'
 export const dynamic = 'force-dynamic'
 
 export default async function ReportsPage() {
-  const programs = await programReport()
-  const s = await summaryReport()
-  const { data: snapshots } = await db()
-    .from('report_snapshots')
-    .select('id, month, generated_at')
-    .order('month', { ascending: false })
+  const [programs, s, { data: snapshots }] = await Promise.all([
+    programReport(),
+    summaryReport(),
+    db().from('report_snapshots').select('id, month, generated_at').order('month', { ascending: false }),
+  ])
 
   return (
     <>

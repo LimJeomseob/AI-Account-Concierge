@@ -314,3 +314,12 @@ describe('Google 계정 선택 생략 힌트', () => {
     expect(loginHint(undefined)).toBeNull()
   })
 })
+
+describe('일괄 처리 묶음 (승인 속도 개선)', () => {
+  it('chunk: n개씩 나누고 순서를 유지한다', async () => {
+    const { chunk } = await import('@/lib/assign')
+    expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]])
+    expect(chunk([], 10)).toEqual([])
+    expect(chunk([1, 2], 0)).toEqual([[1], [2]])
+  })
+})

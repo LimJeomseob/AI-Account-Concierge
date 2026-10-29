@@ -3,6 +3,7 @@
  * Supabase Auth Google Provider 세션 + admins 허용 목록 이중 확인.
  */
 import 'server-only'
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
@@ -38,8 +39,11 @@ export async function authClient() {
   })
 }
 
-/** 로그인한 사용자의 이메일(소문자). 미로그인 시 null */
-export async function sessionEmail(): Promise<string | null> {
+/**
+ * 로그인한 사용자의 이메일(소문자). 미로그인 시 null.
+ * react cache — 레이아웃과 페이지가 같은 요청에서 각각 불러도 Supabase 호출은 한 번만 한다.
+ */
+export const sessionEmail = cache(async (): Promise<string | null> => {
   try {
     const supabase = await authClient()
     const { data } = await supabase.auth.getUser()
@@ -48,16 +52,16 @@ export async function sessionEmail(): Promise<string | null> {
   } catch {
     return null
   }
-}
+})
 
 /** admins 허용 목록 확인 (+ 최초 관리자 부트스트랩) */
-export async function isAdmin(email: string | null): Promise<boolean> {
+export const isAdmin = cache(async (email: string | null): Promise<boolean> => {
   if (!email) return false
   const { data, error } = await db().from('admins').select('email').eq('email', email).maybeSingle()
   if (error) return false
   if (data) return true
   return bootstrapFirstAdmin(email)
-}
+})
 
 /**
  * 최초 관리자 부트스트랩 — admins 표가 비어 있고 로그인 이메일이 INITIAL_ADMIN_EMAIL 과 같으면

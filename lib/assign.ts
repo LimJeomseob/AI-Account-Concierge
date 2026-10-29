@@ -214,3 +214,11 @@ export function assignedDaysOf(
   }
   return total
 }
+
+/** 배열을 n개씩 나눈다 — 일괄 처리를 묶음 단위로 동시에 보낼 때 쓴다 */
+export function chunk<T>(list: T[], n: number): T[][] {
+  const size = Math.max(1, Math.floor(n))
+  const out: T[][] = []
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size))
+  return out
+}
