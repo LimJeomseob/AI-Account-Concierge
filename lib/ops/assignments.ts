@@ -439,3 +439,89 @@ export async function manualAssign(
   })
   if (!ok) throw new Error('해당 계정이 가용 상태가 아니거나, 신청 건 상태가 바뀌었습니다. 새로고침 후 다시 시도해 주세요.')
 }
+
+// --- 사용현황 목록 일괄 처리 (2026-10-29) ---------------------------------------
+
+export interface BulkResult {
+  /** 처리된 건수 */
+  done: number
+  /** 상태가 맞지 않아 건너뛴 건수 */
+  skipped: number
+  /** 처리 중 오류 (접수번호: 사유) — 개인정보 없음 */
+  errors: string[]
+}
+
+/** 선택 회수 시작: 배정·사용중 → 회수중, 계정도 회수중 (R20 과 같은 전이를 관리자가 직접) */
+export async function startReturns(ids: string[], actor: string): Promise<BulkResult> {
+  const out: BulkResult = { done: 0, skipped: 0, errors: [] }
+  if (ids.length === 0) return out
+  const { data } = await db().from('assignments').select('id, status, account_id').in('id', ids)
+  for (const r of data ?? []) {
+    if (!['배정', '사용중'].includes(r.status)) {
+      out.skipped += 1
+      continue
+    }
+    try {
+      const ok = await transitionAssignment({
+        id: r.id,
+        to: '회수중',
+        actor,
+        action: 'assignment.return_start',
+        expect: ['배정', '사용중'],
+      })
+      if (!ok) {
+        out.skipped += 1
+        continue
+      }
+      if (r.account_id) await moveAccountToReturning(r.account_id, r.id, actor)
+      out.done += 1
+    } catch (e) {
+      out.errors.push(`${r.id}: ${(e as Error).message}`)
+    }
+  }
+  return out
+}
+
+/**
+ * 선택 회수 완료 (R24): 관리자가 확인창에서 「대화·메모리 삭제·팀에서 제거를 마쳤다」고 확인한 뒤 부른다.
+ * 체크 2개를 표시하고 회수 완료 — 계정은 가용으로 돌아간다(completeReturn 과 같은 규칙).
+ */
+export async function completeReturns(ids: string[], actor: string, today: string = todayKST()): Promise<BulkResult> {
+  const out: BulkResult = { done: 0, skipped: 0, errors: [] }
+  if (ids.length === 0) return out
+  const { data } = await db().from('assignments').select('id, status').in('id', ids)
+  for (const r of data ?? []) {
+    if (!['회수중', '인수기한초과'].includes(r.status)) {
+      out.skipped += 1
+      continue
+    }
+    try {
+      for (const f of CHECKLIST_FIELDS) await setChecklist(r.id, f, true, actor)
+      await completeReturn(r.id, actor, today)
+      out.done += 1
+    } catch (e) {
+      out.errors.push(`${r.id}: ${(e as Error).message}`)
+    }
+  }
+  return out
+}
+
+/** 선택 취소 (R17) — 회수완료·취소 건은 건너뛴다 */
+export async function cancelMany(ids: string[], actor: string, reason = ''): Promise<BulkResult> {
+  const out: BulkResult = { done: 0, skipped: 0, errors: [] }
+  if (ids.length === 0) return out
+  const { data } = await db().from('assignments').select('id, status').in('id', ids)
+  for (const r of data ?? []) {
+    if (['회수완료', '반려', '취소'].includes(r.status)) {
+      out.skipped += 1
+      continue
+    }
+    try {
+      await cancelAssignment(r.id, actor, reason)
+      out.done += 1
+    } catch (e) {
+      out.errors.push(`${r.id}: ${(e as Error).message}`)
+    }
+  }
+  return out
+}

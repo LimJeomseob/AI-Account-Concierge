@@ -5,6 +5,7 @@
  * 모든 액션은 세션 + admins 검사를 먼저 통과해야 한다.
  */
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { requireAdminAction } from '@/lib/auth'
 import { todayKST } from '@/lib/date'
@@ -17,13 +18,18 @@ import {
   approveAssignments,
   assignApprovedForExport,
   cancelAssignment,
+  cancelMany,
   completeReturn,
+  completeReturns,
+  startReturns,
   manualAssign,
   setChecklist,
 } from '@/lib/ops/assignments'
 import { importAccounts, parseAccountCsv } from '@/lib/ops/accounts'
-import { approveAssignMessage, assignExportMessage, assignedCsv, parseFilter } from '@/lib/ops/export'
+import { approveAssignMessage, assignExportMessage, assignedCsv, bulkMessage, exportQuery, parseFilter } from '@/lib/ops/export'
 import { replaceAccount } from '@/lib/ops/incidents'
+import { buildPlan, commitPlan } from '@/lib/ops/usage-import'
+import { parseUsageCsv, planSummary, type ImportMode, type PlanItem } from '@/lib/usage-import'
 import { runDaily } from '@/lib/cron/daily'
 import { runMonthly } from '@/lib/cron/monthly'
 import { sendTestMail } from '@/lib/mail/dispatch'
@@ -59,12 +65,16 @@ export async function approveAssignExportAction(
   if (selected.length === 0) return { ok: false, msg: '목록에서 「신청」 건을 하나 이상 선택해 주세요.' }
   try {
     const today = todayKST()
-    const { approved } = await approveAssignments(selected, actor, today)
-    const r = await assignApprovedForExport({}, actor, today, { assignmentIds: selected })
+    // 선택 중 「신청」·「승인」 건만 대상 — 이미 사용중인 건을 같이 골라도 CSV 에 섞이지 않게
+    const { data: before } = await db().from('assignments').select('id, status').in('id', selected)
+    const targets = (before ?? []).filter((x) => ['신청', '승인'].includes(x.status)).map((x) => x.id as string)
+    if (targets.length === 0) return { ok: false, msg: '선택한 건 중 「신청」·「승인」 건이 없습니다.' }
+    const { approved } = await approveAssignments(targets, actor, today)
+    const r = await assignApprovedForExport({}, actor, today, { assignmentIds: targets })
     const { data } = await db()
       .from('assignments')
       .select('id, name, email, account_id, status, applied_at')
-      .in('id', selected)
+      .in('id', targets)
       .in('status', ['승인', '사용중'])
       .order('applied_at', { ascending: true })
     const rows = data ?? []
@@ -75,6 +85,90 @@ export async function approveAssignExportAction(
     const msg = approveAssignMessage(approved, r.assigned.length, waiting)
     if (rows.length === 0) return { ok: false, msg }
     return { ok: true, msg, csv: assignedCsv(rows), filename: `approved-${today.replace(/-/g, '')}.csv` }
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message }
+  }
+}
+
+/** 사용현황 목록 일괄 처리 후 같은 조회 조건으로 돌아가 결과를 알린다 (back = 현재 조회 쿼리) */
+function backWithNotice(fd: FormData, notice: string): never {
+  const back = new URLSearchParams(str(fd, 'back').replace(/^\?/, ''))
+  const q = exportQuery(parseFilter((k) => back.get(k)))
+  revalidatePath('/admin/assignments')
+  revalidatePath('/admin/accounts')
+  revalidatePath('/admin/dashboard')
+  redirect(`/admin/assignments${q}${q ? '&' : '?'}notice=${encodeURIComponent(notice.slice(0, 300))}`)
+}
+
+/** 「승인만」 — 선택한 「신청」 건 승인(R13), 배정은 하지 않는다 */
+export async function bulkApproveAction(fd: FormData) {
+  const actor = await requireAdminAction()
+  const { approved } = await approveAssignments(ids(fd), actor)
+  backWithNotice(fd, `승인 ${approved}건 (배정은 「승인 대기 일괄 배정」으로)`)
+}
+
+/** 선택 회수 시작 — 배정·사용중 → 회수중 */
+export async function bulkReturnStartAction(fd: FormData) {
+  const actor = await requireAdminAction()
+  const r = await startReturns(ids(fd), actor)
+  backWithNotice(fd, bulkMessage('회수 시작', r))
+}
+
+/** 선택 회수 완료 — 확인창에서 체크 2개(대화·메모리 삭제·팀에서 제거) 완료를 확인한 뒤 호출(R24) */
+export async function bulkReturnCompleteAction(fd: FormData) {
+  const actor = await requireAdminAction()
+  const r = await completeReturns(ids(fd), actor)
+  backWithNotice(fd, bulkMessage('회수 완료', r))
+}
+
+/** 선택 취소 (R17) */
+export async function bulkCancelAction(fd: FormData) {
+  const actor = await requireAdminAction()
+  const r = await cancelMany(ids(fd), actor, str(fd, 'reason'))
+  backWithNotice(fd, bulkMessage('취소', r))
+}
+
+// --- 사용현황 CSV 일괄 등록 ---------------------------------------------------
+
+function importInput(fd: FormData): { text: string; mode: ImportMode; program: string | null } {
+  const text = String(fd.get('csv') ?? '')
+  if (text.length > 1_000_000) throw new Error('파일이 너무 큽니다(1MB 이하).')
+  const mode: ImportMode = str(fd, 'mode') === '회수완료' ? '회수완료' : '사용중'
+  return { text, mode, program: str(fd, 'program') || null }
+}
+
+/** 미리보기 — DB 를 바꾸지 않는다 */
+export async function usageImportPreviewAction(
+  fd: FormData,
+): Promise<{ ok: boolean; msg: string; items?: PlanItem[] }> {
+  await requireAdminAction()
+  try {
+    const { text, mode, program } = importInput(fd)
+    const parsed = parseUsageCsv(text)
+    if (parsed.error) return { ok: false, msg: parsed.error }
+    const items = await buildPlan(parsed.rows, mode, program)
+    return { ok: true, msg: planSummary(items), items }
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message }
+  }
+}
+
+/** 확정 — 같은 파일로 계획을 다시 세워(그사이 바뀐 DB 반영) 「등록」 행만 처리 */
+export async function usageImportCommitAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
+  const actor = await requireAdminAction()
+  try {
+    const { text, mode, program } = importInput(fd)
+    const parsed = parseUsageCsv(text)
+    if (parsed.error) return { ok: false, msg: parsed.error }
+    const items = await buildPlan(parsed.rows, mode, program)
+    const r = await commitPlan(items, mode, actor)
+    revalidatePath('/admin/assignments')
+    revalidatePath('/admin/accounts')
+    revalidatePath('/admin/dashboard')
+    revalidatePath('/admin/users')
+    const skipped = items.filter((x) => x.action !== 'new').length
+    const msg = `${mode} ${r.done}건 등록 · 건너뜀/오류 행 ${skipped}건${r.errors.length > 0 ? ` · 등록 실패 ${r.errors.length}건 (${r.errors.slice(0, 3).join(' / ')})` : ''}`
+    return { ok: r.errors.length === 0, msg }
   } catch (e) {
     return { ok: false, msg: (e as Error).message }
   }

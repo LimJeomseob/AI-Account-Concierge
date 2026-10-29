@@ -105,3 +105,11 @@ export function assignExportMessage(assigned: number, noPeriod: number, shortage
   if (parts.length === 0) parts.push('현재 목록에 배정할 「승인」 건이 없습니다.')
   return parts.join(' ')
 }
+
+/** 일괄 처리 결과 문구 (순수 함수) — 화면 상단 알림에 쓴다 */
+export function bulkMessage(label: string, r: { done: number; skipped: number; errors: string[] }): string {
+  const parts = [`${label} ${r.done}건`]
+  if (r.skipped > 0) parts.push(`상태가 맞지 않아 건너뜀 ${r.skipped}건`)
+  if (r.errors.length > 0) parts.push(`오류 ${r.errors.length}건 (${r.errors.slice(0, 3).join(' / ')}${r.errors.length > 3 ? ' …' : ''})`)
+  return parts.join(' · ')
+}
