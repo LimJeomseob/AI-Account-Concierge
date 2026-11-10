@@ -451,7 +451,8 @@ describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
       '﻿성명,E-mail,서비스,사용기간,계정\n홍길동,Hong@GNU.ac.kr,ChatGPT,2026-10-01~2026-12-31,gpt-003\n김,bad-mail,Gemini,,\n',
     )
     expect(r.error).toBeUndefined()
-    expect(r.rows[0]).toMatchObject({ line: 2, email: 'hong@gnu.ac.kr', service: 'GPT', start: '2026-10-01', end: '2026-12-31', account: 'GPT-003', errors: [] })
+    expect(r.rows[0]).toMatchObject({ line: 2, email: 'hong@gnu.ac.kr', service: 'GPT', start: '2026-10-01', end: '2026-12-31', errors: [] })
+    expect('account' in r.rows[0]).toBe(false) // 계정 열은 무시 — 업로드 후 자동 부여
     expect(r.rows[1].errors.join()).toContain('이메일 형식 오류')
     expect(r.rows[1].errors.join()).toContain('Gemini')
     expect(parseUsageCsv('이름,이메일\na,b@c.d').error).toContain('플랫폼')
@@ -467,21 +468,39 @@ describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
       },
     ])
     const r = parseUsageCsv(csv)
-    expect(r.rows[0]).toMatchObject({ service: 'GPT', account: 'GPT-001', program: '연구모임(ChatGPT)', errors: [] })
+    expect(r.rows[0]).toMatchObject({ service: 'GPT', program: '연구모임(ChatGPT)', errors: [] })
+    expect('account' in r.rows[0]).toBe(false)
   })
 
-  it('planImport: 자동 계정·건너뜀·중복·계정 상태 검사', async () => {
+  it('양식에 계정번호 열이 없다', async () => {
+    const { IMPORT_TEMPLATE, parseUsageCsv } = await import('@/lib/usage-import')
+    expect(IMPORT_TEMPLATE.split('\n')[0]).toBe('﻿이름,이메일,플랫폼,프로그램,사용시작,사용종료')
+    expect(parseUsageCsv(IMPORT_TEMPLATE).rows[0]).toMatchObject({ service: 'Claude', start: '2026-10-01', errors: [] })
+  })
+
+  it('importReadiness: 파일·머리글·프로그램이 갖춰져야 업로드 단추 활성', async () => {
+    const { importReadiness } = await import('@/lib/usage-import')
+    expect(importReadiness('', '')).toMatchObject({ ready: false, msg: 'CSV 파일을 고르세요' })
+    expect(importReadiness('이름,이메일\na,b@c.d', 'P1')).toMatchObject({ ready: false })
+    expect(importReadiness('이름,이메일\na,b@c.d', 'P1').msg).toContain('플랫폼')
+    const noProgram = '이름,이메일,플랫폼\nA,a@x.kr,Claude\nB,b@x.kr,GPT'
+    expect(importReadiness(noProgram, '').ready).toBe(false)
+    expect(importReadiness(noProgram, '').msg).toContain('2건')
+    expect(importReadiness(noProgram, 'P1')).toEqual({ ready: true, msg: '준비 완료 · 2행' })
+    expect(importReadiness('이름,이메일,플랫폼,프로그램\nA,a@x.kr,Claude,P26-24', '').ready).toBe(true)
+  })
+
+  it('planImport: 계정 자동 부여(번호 순)·건너뜀·중복·가용 소진 시 계정 없이 기록 저장', async () => {
     const { parseUsageCsv, planImport, planSummary } = await import('@/lib/usage-import')
     const { rows } = parseUsageCsv(
       [
         '이름,이메일,플랫폼,프로그램,계정번호',
-        'A,a@x.kr,Claude,연구모임(Claude),', // 자동 → CL-002 (CL-001 은 아래 행이 직접 지정)
-        'B,b@x.kr,Claude,,CL-001', // 기본 프로그램 사용
+        'A,a@x.kr,Claude,연구모임(Claude),CL-009', // 계정번호 열은 무시 → 자동 CL-001
+        'B,b@x.kr,Claude,,', // 기본 프로그램 사용 → 자동 CL-002
         'C,c@x.kr,Claude,연구모임(Claude),', // 이미 사용중 → 건너뜀
         'A,a@x.kr,Claude,연구모임(Claude),', // 파일 안 중복
         'D,d@x.kr,GPT,없는프로그램,',
-        'E,e@x.kr,Claude,P26-24,CL-009', // 배정된 계정 지정 → 오류
-        'F,f@x.kr,Claude,P26-24,', // 가용 Claude 소진 → 오류
+        'E,e@x.kr,Claude,P26-24,', // 가용 Claude 소진 → 계정 없이 기록 저장
       ].join('\n'),
     )
     const items = planImport(rows, {
@@ -498,19 +517,17 @@ describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
       programEmailKeys: new Set(),
     })
     expect(items.map((x) => [x.action, x.accountId])).toEqual([
-      ['new', 'CL-002'],
       ['new', 'CL-001'],
+      ['new', 'CL-002'],
       ['skip', null],
       ['skip', null],
       ['error', null],
-      ['error', null],
-      ['error', null],
+      ['new', null],
     ])
     expect(items[0].start).toBe('2026-10-29')
     expect(items[4].msg).toContain('없는프로그램')
-    expect(items[5].msg).toContain('가용 계정만')
-    expect(items[6].msg).toContain('가용 계정 부족')
-    expect(planSummary(items)).toBe('전체 7행 · 등록 2 · 건너뜀 2 · 오류 3')
+    expect(items[5].msg).toContain('계정 미배정')
+    expect(planSummary(items)).toBe('전체 6행 · 등록 3 · 건너뜀 2 · 오류 1')
   })
 
   it('planImport 회수완료: 계정 없어도 되고 종료일 기본값 오늘, 같은 프로그램 이력이 있으면 오류', async () => {

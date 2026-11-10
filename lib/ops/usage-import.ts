@@ -1,8 +1,10 @@
 /**
  * 사용현황 CSV 일괄 등록 — 서버 실행부 (2026-10-29)
  * 계획(lib/usage-import.ts:planImport)을 DB 현재 상태로 만들고, 확정하면 행마다 등록한다.
+ * 계정번호는 CSV 로 받지 않는다 — 「사용중」은 계획 단계에서 가용 계정을 번호 순으로 자동 부여한다.
  *  · 사용중: 사용자 생성(없으면, 구분 공란) → 「승인」 건 생성 → 계정 선점(claimAccount) → 「사용중」 전이
- *            선점·전이가 실패하면 만든 건을 지우고 계정을 되돌린다
+ *            가용 계정이 없거나 선점에 실패하면 계정 없이 「사용중」 기록으로 저장한다(가용 계정 수와 무관)
+ *            전이가 실패하면 만든 건을 지우고 계정을 되돌린다
  *  · 회수완료: 지난 사용 이력으로 「회수완료」 건만 만든다(계정 상태는 건드리지 않음, 회수 체크 2개 완료 표시)
  * 로그에는 이메일을 남기지 않는다(R31).
  */
@@ -121,11 +123,11 @@ export async function commitPlan(
         note,
       })
       if (error) throw new Error(error.message)
-      const accountId = it.accountId as string
-      const claimed = await claimAccount({ id: accountId, assignmentId: id, actor, action: 'account.assign' })
-      if (!claimed) {
-        await db().from('assignments').delete().eq('id', id).eq('status', '승인')
-        throw new Error(`계정 ${accountId} 가 그사이 가용이 아니게 됨`)
+      // 가용 계정이 있으면 선점, 없거나 그사이 선점에 실패하면 계정 없이 기록으로 저장(가용 계정 수와 무관)
+      let accountId: string | null = it.accountId
+      if (accountId) {
+        const claimed = await claimAccount({ id: accountId, assignmentId: id, actor, action: 'account.assign' })
+        if (!claimed) accountId = null
       }
       const start = it.start ?? today
       const ok = await transitionAssignment({
@@ -142,10 +144,10 @@ export async function commitPlan(
           rent_end: it.end,
           acknowledged_at: kstMidnight(start),
         },
-        detail: { mode, program: it.programId, account_id: accountId },
+        detail: { mode, program: it.programId, account_id: accountId, ...(accountId ? {} : { no_account: true }) },
       })
       if (!ok) {
-        await releaseClaim({ id: accountId, assignmentId: id, actor, reason: 'import_failed' })
+        if (accountId) await releaseClaim({ id: accountId, assignmentId: id, actor, reason: 'import_failed' })
         await db().from('assignments').delete().eq('id', id).eq('status', '승인')
         throw new Error('등록 중 상태가 바뀜')
       }

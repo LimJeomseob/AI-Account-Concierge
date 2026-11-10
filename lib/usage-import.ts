@@ -4,7 +4,9 @@
  *
  * CSV 열(머리글 이름으로 찾는다, 순서 무관):
  *   필수  이름 · 이메일 · 플랫폼(ChatGPT/GPT/Claude)
- *   선택  프로그램(이름 또는 번호) · 계정번호 · 사용시작 · 사용종료 (또는 사용기간 「2026-10-01~2026-12-31」)
+ *   선택  프로그램(이름 또는 번호) · 사용시작 · 사용종료 (또는 사용기간 「2026-10-01~2026-12-31」)
+ * 계정번호 열은 양식에 없다(2026-10-29). 열이 있어도 무시하고, 「사용중」은 업로드 후 가용 계정을 번호 순으로 자동 부여한다(R14).
+ * 가용 계정 수와 상관없이 기록은 저장한다 — 가용 계정이 없으면 「사용중」을 계정 없이 저장(회수완료는 원래 계정 없음).
  * 등록 상태는 화면에서 고른다: 「사용중」(계정 배정) 또는 「회수완료」(지난 사용 이력)
  */
 
@@ -17,7 +19,6 @@ export interface ImportRow {
   email: string
   service: Platform | null
   program: string
-  account: string
   start: string | null
   end: string | null
   errors: string[]
@@ -26,14 +27,13 @@ export interface ImportRow {
 export const MAX_IMPORT_ROWS = 1000
 
 export const IMPORT_TEMPLATE =
-  '﻿이름,이메일,플랫폼,프로그램,계정번호,사용시작,사용종료\n홍길동,hong@gnu.ac.kr,Claude,초·중·고급 AI활용 연구모임 운영,,2026-10-01,\n'
+  '﻿이름,이메일,플랫폼,프로그램,사용시작,사용종료\n홍길동,hong@gnu.ac.kr,Claude,초·중·고급 AI활용 연구모임 운영,2026-10-01,\n'
 
 const HEADER_ALIASES: Record<string, string[]> = {
   name: ['이름', '성명', 'name'],
   email: ['이메일', '메일', 'email', 'e-mail'],
   service: ['플랫폼', '서비스', 'platform', 'service'],
   program: ['프로그램', '프로그램명', 'program'],
-  account: ['계정번호', '계정', 'account', 'account_id'],
   start: ['사용시작', '시작일', '대여시작', '사용개시', 'start'],
   end: ['사용종료', '종료일', '대여종료', 'end'],
   period: ['사용기간', '대여기간', 'period'],
@@ -137,7 +137,6 @@ export function parseUsageCsv(text: string): { rows: ImportRow[]; error?: string
       email,
       service,
       program: get('program'),
-      account: get('account').toUpperCase(),
       start: start === 'invalid' ? null : start,
       end: end === 'invalid' ? null : end,
       errors,
@@ -180,7 +179,6 @@ export interface PlanItem {
 export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
   const byId = new Map(ctx.programs.map((p) => [p.id.toUpperCase(), p]))
   const byName = new Map(ctx.programs.map((p) => [p.name.trim().toLowerCase(), p]))
-  const accounts = new Map(ctx.accounts.map((a) => [a.id.toUpperCase(), a]))
   const reserved = new Set<string>()
   const seenActive = new Set<string>()
   const seenProgram = new Set<string>()
@@ -189,9 +187,6 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
       .filter((a) => a.service === service && a.status === '가용' && a.kind === '운영')
       .map((a) => a.id)
       .sort()
-
-  // 계정번호를 직접 적은 행이 먼저 그 계정을 쓰도록 미리 예약
-  if (ctx.mode === '사용중') for (const r of rows) if (r.account && r.errors.length === 0) reserved.add(r.account)
 
   // 고정기간 프로그램의 종료일 — 「사용중」 등록에서 사용종료가 비면 이 날짜로 둔다(R2·R20)
   const fixedEnd = (programId: string | null) => {
@@ -231,27 +226,37 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
     if (ctx.programEmailKeys.has(programKey)) return fail('같은 프로그램·플랫폼에 이 이메일의 신청~회수완료 건이 이미 있음(R9)')
     if (seenProgram.has(programKey)) return fail('파일 안에서 같은 프로그램·이메일·플랫폼 중복')
 
+    // 계정은 CSV 로 받지 않고 업로드 후 자동 부여 — 「사용중」만, 가용·운영 계정을 번호 순으로(R14)
+    // 가용 계정이 모자라도 오류로 막지 않고 계정 없이 기록으로 저장한다(2026-10-29 운영자 결정)
     let accountId: string | null = null
-    if (r.account) {
-      const acc = accounts.get(r.account)
-      if (!acc) return fail(`계정번호 「${r.account}」 없음`)
-      if (acc.service !== r.service) return fail(`계정번호 ${r.account} 는 ${acc.service} 계정`)
-      if (ctx.mode === '사용중') {
-        if (acc.status !== '가용') return fail(`계정번호 ${r.account} 상태 「${acc.status}」 — 가용 계정만 배정`)
-        if (seenActive.has(`acc:${acc.id}`)) return fail(`계정번호 ${r.account} 를 파일 안에서 두 번 사용`)
-        seenActive.add(`acc:${acc.id}`)
-      }
-      accountId = acc.id
-    } else if (ctx.mode === '사용중') {
+    let msg = '회수완료 이력 등록'
+    if (ctx.mode === '사용중') {
       accountId = pool(r.service as string).find((id) => !reserved.has(id)) ?? null
-      if (!accountId) return fail(`${r.service === 'GPT' ? 'ChatGPT' : 'Claude'} 가용 계정 부족`)
-      reserved.add(accountId)
+      if (accountId) {
+        reserved.add(accountId)
+        msg = '사용중 등록'
+      } else msg = `사용중 기록 저장 — ${r.service === 'GPT' ? 'ChatGPT' : 'Claude'} 가용 계정이 없어 계정 미배정`
     }
 
     seenActive.add(activeKey)
     seenProgram.add(programKey)
-    return { ...base, accountId, action: 'new', msg: ctx.mode === '사용중' ? '사용중 등록' : '회수완료 이력 등록' }
+    return { ...base, accountId, action: 'new', msg }
   })
+}
+
+/**
+ * 「업로드」 단추 준비 판정 (브라우저에서 호출, DB 없음)
+ * 파일이 읽혔고 머리글이 맞으며, 모든 행의 프로그램이 정해질 수 있을 때만 ready
+ */
+export function importReadiness(text: string, defaultProgramId: string): { ready: boolean; msg: string } {
+  if (!text.trim()) return { ready: false, msg: 'CSV 파일을 고르세요' }
+  const parsed = parseUsageCsv(text)
+  if (parsed.error) return { ready: false, msg: parsed.error }
+  const blank = parsed.rows.filter((r) => !r.program).length
+  if (!defaultProgramId && blank > 0) {
+    return { ready: false, msg: `프로그램이 빈 행 ${blank}건 — 기본 프로그램을 고르거나 CSV 에 프로그램을 적어 주세요` }
+  }
+  return { ready: true, msg: `준비 완료 · ${parsed.rows.length}행` }
 }
 
 /** 미리보기 요약 문구 (순수 함수) */
