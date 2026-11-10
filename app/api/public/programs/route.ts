@@ -1,11 +1,11 @@
 /**
  * GET /api/public/programs (PRD §12-1, R3)
- * 전체 프로그램을 돌려주고 항목마다 접수 가능 여부(open)·사유(reason)·표시 문구(label)를 붙인다.
- * 신청 페이지는 이 값으로 「접수 준비 중」·「접수 종료」 등을 표시한다.
+ * 전체 프로그램을 돌려주고 항목마다 접수 가능 여부(open)·사유(reason)·표시 문구(label)·대여기간 문구(period)를 붙인다.
+ * 신청 폼(signup-snippet.html)은 이 값으로 「접수중」·「접수 준비 중」·「접수 종료」를 표시한다.
+ * 판정은 상태만 본다(2026-11-10) — /apply 페이지·접수 검증과 같은 함수(applyAvailability).
  */
 import { db } from '@/lib/db'
 import { applyAvailability } from '@/lib/assign'
-import { todayKST } from '@/lib/date'
 import { getSettings } from '@/lib/settings'
 import { jsonWithCors, preflight } from '@/lib/cors'
 import type { Program } from '@/lib/types'
@@ -17,22 +17,15 @@ export async function OPTIONS(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const today = todayKST()
   const s = await getSettings()
-  const { data, error } = await db().from('programs').select('*').order('id')
+  const { data, error } = await db().from('programs').select('id, name, status').order('id')
   if (error) return jsonWithCors(req, { ok: false, msg: '프로그램 조회 실패' }, 500)
 
-  // 내부 프로그램(기관관리자, 0007)은 공개 목록에 보이지 않는다. 열이 없던 배포에서도 안전하게 JS 에서 거른다
-  const programs = (data as Program[]).filter((p) => !p.internal).map((p) => {
-    const a = applyAvailability(p, today)
+  const programs = (data as Pick<Program, 'id' | 'name' | 'status'>[]).map((p) => {
+    const a = applyAvailability(p)
     return {
       id: p.id,
       name: p.name,
-      target: p.target,
-      mode: p.mode,
-      days: p.days,
-      start: p.start_on,
-      end: p.end_on,
       status: p.status,
       open: a.open,
       reason: a.reason,

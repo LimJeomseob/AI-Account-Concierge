@@ -97,11 +97,11 @@ export function approveAssignMessage(approved: number, assigned: number, waiting
 }
 
 /** 배정 결과 안내 문구 (순수 함수) */
-export function assignExportMessage(assigned: number, noPeriod: number, shortage: number): string {
+export function assignExportMessage(assigned: number, notOpen: number, shortage: number): string {
   const parts: string[] = []
   if (assigned > 0) parts.push(`${assigned}명 배정 — 내려받은 이메일을 팀 워크스페이스에 초대해 주세요.`)
-  if (shortage > 0) parts.push(`${shortage}명은 가용 계정이 없거나 배정상한에 걸려 「승인」 대기로 남았습니다.`)
-  if (noPeriod > 0) parts.push(`${noPeriod}명은 프로그램이 진행중이 아니거나 대여기간이 없어 배정하지 않았습니다.`)
+  if (shortage > 0) parts.push(`${shortage}명은 가용 계정이 없어 「승인」 대기로 남았습니다.`)
+  if (notOpen > 0) parts.push(`${notOpen}명은 프로그램이 「진행중」이 아니라 배정하지 않았습니다.`)
   if (parts.length === 0) parts.push('현재 목록에 배정할 「승인」 건이 없습니다.')
   return parts.join(' ')
 }

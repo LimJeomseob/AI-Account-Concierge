@@ -249,8 +249,8 @@ describe('승인 건 배정 + 메일 내려받기 (R14, 2026-10-29)', () => {
     expect(assignExportMessage(0, 0, 0)).toContain('배정할 「승인」 건이 없습니다')
     const m = assignExportMessage(3, 1, 2)
     expect(m).toContain('3명 배정')
-    expect(m).toContain('2명은 가용 계정이 없거나')
-    expect(m).toContain('1명은 프로그램이 진행중이 아니거나')
+    expect(m).toContain('2명은 가용 계정이 없어')
+    expect(m).toContain('1명은 프로그램이 「진행중」이 아니라')
   })
   it('반려 전이 없음 (R17 폐지)', () => {
     expect(canTransitionAssignment('신청', '반려')).toBe(false)
@@ -552,13 +552,13 @@ describe('사용현황 CSV — 플랫폼별 프로그램 불일치', () => {
   })
 })
 
-describe('사용현황 CSV — 플랫폼별 중복 기준(0008)·고정기간 종료일', () => {
+describe('사용현황 CSV — 플랫폼별 중복 기준(0008)·사용종료 기본값 없음', () => {
   it('같은 프로그램이라도 다른 플랫폼이면 등록, 같은 플랫폼이면 오류', async () => {
     const { parseUsageCsv, planImport } = await import('@/lib/usage-import')
     const { rows } = parseUsageCsv('이름,이메일,플랫폼\nS,s@x.kr,ChatGPT\nS,s@x.kr,Claude\nT,t@x.kr,Claude')
     const items = planImport(rows, {
       mode: '사용중', today: '2026-10-29', defaultProgramId: 'P5',
-      programs: [{ id: 'P5', name: '초·중·고급 AI활용 연구모임 운영', mode: '고정기간', end_on: '2026-11-12' }],
+      programs: [{ id: 'P5', name: '초·중·고급 AI활용 연구모임 운영' }],
       accounts: [
         { id: 'CL-001', service: 'Claude', status: '가용', kind: '운영' },
         { id: 'GPT-001', service: 'GPT', status: '가용', kind: '운영' },
@@ -567,7 +567,8 @@ describe('사용현황 CSV — 플랫폼별 중복 기준(0008)·고정기간 �
       programEmailKeys: new Set(['P5|t@x.kr|Claude']),
     })
     expect(items.map((x) => x.action)).toEqual(['new', 'new', 'error'])
-    expect(items[0]).toMatchObject({ accountId: 'GPT-001', end: '2026-11-12' })
-    expect(items[1]).toMatchObject({ accountId: 'CL-001', end: '2026-11-12' })
+    // 사용종료를 비우면 비운 채로 등록 — 프로그램 기간에서 채우지 않는다(2026-11-10)
+    expect(items[0]).toMatchObject({ accountId: 'GPT-001', start: '2026-10-29', end: null })
+    expect(items[1]).toMatchObject({ accountId: 'CL-001', end: null })
   })
 })

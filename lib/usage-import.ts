@@ -153,8 +153,8 @@ export interface PlanContext {
   today: string
   /** CSV 에 프로그램이 비어 있을 때 쓸 프로그램 번호 */
   defaultProgramId: string | null
-  /** mode·end_on 이 있으면 「사용중」 등록의 사용종료 기본값으로 고정기간 프로그램의 종료일을 쓴다(R2) */
-  programs: Array<{ id: string; name: string; mode?: string | null; end_on?: string | null }>
+  /** 사용종료 기본값은 없다 — CSV 에 적은 값만 쓴다(프로그램 기간 폐지, 2026-11-10) */
+  programs: Array<{ id: string; name: string }>
   accounts: Array<{ id: string; service: string; status: string; kind: string }>
   /** 「이메일|플랫폼」 — 이미 배정·사용중·회수중인 조합 */
   activeKeys: Set<string>
@@ -193,12 +193,6 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
   // 계정번호를 직접 적은 행이 먼저 그 계정을 쓰도록 미리 예약
   if (ctx.mode === '사용중') for (const r of rows) if (r.account && r.errors.length === 0) reserved.add(r.account)
 
-  // 고정기간 프로그램의 종료일 — 「사용중」 등록에서 사용종료가 비면 이 날짜로 둔다(R2·R20)
-  const fixedEnd = (programId: string | null) => {
-    const p = ctx.programs.find((x) => x.id === programId)
-    return p?.mode === '고정기간' ? p.end_on ?? null : null
-  }
-
   return rows.map((r) => {
     const program = r.program ? byId.get(r.program.toUpperCase()) ?? byName.get(r.program.trim().toLowerCase()) : undefined
     const programId = program?.id ?? (r.program ? null : ctx.defaultProgramId)
@@ -212,7 +206,7 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
       programName,
       accountId: null as string | null,
       start: ctx.mode === '사용중' ? r.start ?? ctx.today : r.start,
-      end: ctx.mode === '회수완료' ? r.end ?? ctx.today : r.end ?? fixedEnd(programId),
+      end: ctx.mode === '회수완료' ? r.end ?? ctx.today : r.end,
     }
     const fail = (msg: string): PlanItem => ({ ...base, action: 'error', msg })
     if (r.errors.length > 0) return fail(r.errors.join(' · '))

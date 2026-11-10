@@ -146,7 +146,7 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     await db().from('programs').delete().like('id', `${RUN}%`)
   }, 60_000)
 
-  it('T1 — 진행중 + 기간 미설정 프로그램은 접수되고(R3) 대여기간은 「추후 안내」, 배정은 보류', async () => {
+  it('T1 — 상태만으로 판정: 진행중이면 기간 없이 접수, 진행완료면 접수 거부·배정 안 함 (R3·R8·R14)', async () => {
     const res = await M.apply.applyForAccount({
       programId: PROG_NOPERIOD,
       name: '테스트1',
@@ -156,15 +156,25 @@ describe.runIf(enabled).sequential('수용 기준 T1~T13 (PRD §16)', () => {
     })
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    expect(res.period).toContain('추후 안내')
+    expect(res.period).toContain('진행완료 시 회수')
     const { data: row } = await M.db.db().from('assignments').select('status, rent_start, rent_end').eq('id', res.id).single()
     expect(row?.status).toBe('신청')
     expect(row?.rent_start).toBeNull()
-    // 기간이 없으므로 승인 후 「배정 + 메일 내려받기」를 해도 배정되지 않고 「승인」에 머문다 (R14·R15)
+    expect(row?.rent_end).toBeNull()
     await M.assignments.approveAssignments([res.id], 'acceptance@test', today)
+    // 진행완료(DB 값 완료)로 바꾸면 새 신청은 거부되고, 남은 승인 건도 배정하지 않는다
+    await M.db.db().from('programs').update({ status: '완료' }).eq('id', PROG_NOPERIOD)
+    const late = await M.apply.applyForAccount({
+      programId: PROG_NOPERIOD,
+      name: '테스트1-2',
+      affiliation: 'AI융합원',
+      type: '학생',
+      email: mail(8),
+    })
+    expect(late.ok).toBe(false)
     const r = await M.assignments.assignApprovedForExport({ program: PROG_NOPERIOD }, 'acceptance@test', today, SCOPE)
     expect(r.assigned).toHaveLength(0)
-    expect(r.noPeriod).toBe(1)
+    expect(r.notOpen).toBe(1)
     const { data: after } = await M.db.db().from('assignments').select('status').eq('id', res.id).single()
     expect(after?.status).toBe('승인')
   })

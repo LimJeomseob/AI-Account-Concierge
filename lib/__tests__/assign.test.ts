@@ -1,100 +1,78 @@
 import { describe, expect, it } from 'vitest'
 import {
+  APPLY_BLOCK_LABEL,
+  RENT_PERIOD_TEXT,
   applyAvailability,
   assignedDaysOf,
-  capRemaining,
   isAccountEligible,
   isAssignable,
   isOpenForApply,
-  periodFor,
   planAllocations,
   type PoolAccount,
   type QueueItem,
 } from '@/lib/assign'
+import type { Program } from '@/lib/types'
 
-const fixed = { mode: '고정기간' as const, days: 0, start_on: '2026-09-01', end_on: '2026-09-30', status: '진행중' as const }
-const rolling = { mode: '배정일기준' as const, days: 30, start_on: null, end_on: null, status: '진행중' as const }
+/** 옛 열(대여방식·기간·상한·내부 여부)이 어떤 값이어도 판정은 상태만 본다 (2026-11-10) */
+const legacy: Omit<Program, 'id' | 'name' | 'status'> = {
+  target: '혼합',
+  mode: '고정기간',
+  days: 0,
+  start_on: '2026-11-05',
+  end_on: '2026-11-06', // 이미 지난 종료일
+  cap: 1,
+  note: null,
+  internal: true,
+}
+const prog = (status: Program['status']) => ({ id: 'P26-99', name: '테스트', status, ...legacy })
 
-describe('periodFor (R2·R15)', () => {
-  it('고정기간은 프로그램 시작·종료일을 그대로 쓴다', () => {
-    expect(periodFor(fixed, '2026-09-04')).toEqual({ start: '2026-09-01', end: '2026-09-30' })
-  })
-
-  it('배정일기준은 기준일부터 days−1 일', () => {
-    expect(periodFor(rolling, '2026-09-04')).toEqual({ start: '2026-09-04', end: '2026-10-03' })
-  })
-
-  it('기간 미설정이면 null (R3 접수 준비 중)', () => {
-    expect(periodFor({ ...fixed, start_on: null }, '2026-09-04')).toBeNull()
-    expect(periodFor({ ...rolling, days: 0 }, '2026-09-04')).toBeNull()
-  })
-})
-
-describe('isOpenForApply / isAssignable (R3·R15)', () => {
-  it('완료된 프로그램은 접수·배정 대상이 아니다', () => {
-    const closed = { ...fixed, status: '완료' as const }
-    expect(isOpenForApply(closed, '2026-09-04')).toBe(false)
-    expect(isAssignable(closed, '2026-09-04')).toBe(false)
-  })
-
-  it('시작전 프로그램은 기간이 있어도 접수·배정 대상이 아니다', () => {
-    const notStarted = { ...fixed, status: '시작전' as const }
-    expect(isOpenForApply(notStarted, '2026-09-04')).toBe(false)
-    expect(isAssignable(notStarted, '2026-09-04')).toBe(false)
-  })
-
-  it('진행중이면 대여기간이 없어도 접수는 가능(배정만 보류)', () => {
-    expect(isOpenForApply(fixed, '2026-09-04')).toBe(true)
-    expect(isOpenForApply(rolling, '2026-09-04')).toBe(true)
-    const noPeriod = { ...fixed, start_on: null }
-    expect(isOpenForApply(noPeriod, '2026-09-04')).toBe(true)
-    expect(isAssignable(noPeriod, '2026-09-04')).toBe(false)
-  })
-
-  it('고정기간 프로그램은 종료일이 지나면 배정 대상에서 빠진다', () => {
-    expect(isOpenForApply(fixed, '2026-10-05')).toBe(true)
-    expect(isAssignable(fixed, '2026-10-05')).toBe(false)
-  })
-})
-
-describe('applyAvailability (R3: 프로그램 상태 ↔ 신청 페이지 표시)', () => {
-  it('시작전 → 접수 준비 중', () => {
-    expect(applyAvailability({ ...fixed, status: '시작전' }, '2026-09-04')).toMatchObject({
+describe('applyAvailability (R3·R8: 상태 하나로 신청 가능 여부 결정)', () => {
+  it('시작전 → 접수 준비 중(선택 불가)', () => {
+    expect(applyAvailability(prog('시작전'))).toEqual({
       open: false,
       reason: '시작전',
       label: '접수 준비 중',
+      period: APPLY_BLOCK_LABEL.시작전,
     })
   })
 
-  it('진행중 + 기간 미설정 → 접수중, 기간은 추후 안내', () => {
-    expect(applyAvailability({ ...fixed, start_on: null }, '2026-09-04')).toMatchObject({
+  it('진행중 → 접수중, 대여기간은 고정 문구 — 종료일이 지났거나 내부 프로그램이어도 접수', () => {
+    expect(applyAvailability(prog('진행중'))).toEqual({
       open: true,
       reason: null,
       label: '접수중',
-      period: '대여기간 추후 안내(배정 시 확정)',
+      period: RENT_PERIOD_TEXT,
     })
   })
 
-  it('진행중 + 기간 설정 → 접수중, 대여기간 문구', () => {
-    expect(applyAvailability(fixed, '2026-09-04')).toEqual({
-      open: true,
-      reason: null,
-      label: '접수중',
-      period: '2026-09-01 ~ 2026-09-30',
-    })
-    expect(applyAvailability(rolling, '2026-09-04').period).toBe('배정일부터 30일')
+  it('진행완료(DB 값 완료) → 접수 종료(선택 불가)', () => {
+    expect(applyAvailability(prog('완료'))).toMatchObject({ open: false, reason: '완료', label: '접수 종료' })
   })
 
-  it('완료 → 접수 종료', () => {
-    expect(applyAvailability({ ...rolling, status: '완료' }, '2026-09-04')).toMatchObject({
-      open: false,
-      reason: '완료',
-      label: '접수 종료',
-    })
+  it('내부 프로그램(기관관리자)도 같은 규칙 — 숨김 규칙 폐지', () => {
+    const internalOpen: Program = { ...prog('진행중'), internal: true }
+    const internalClosed: Program = { ...prog('시작전'), internal: true }
+    expect(isOpenForApply(internalOpen)).toBe(true)
+    expect(isOpenForApply(internalClosed)).toBe(false)
   })
 })
 
-describe('isAccountEligible (R14-2)', () => {
+describe('isAssignable (R14: 진행중이면 배정)', () => {
+  it('진행중이면 기간·상한과 무관하게 배정 대상', () => {
+    expect(isAssignable(prog('진행중'))).toBe(true)
+  })
+  it('시작전·진행완료는 배정 대상이 아니다', () => {
+    expect(isAssignable(prog('시작전'))).toBe(false)
+    expect(isAssignable(prog('완료'))).toBe(false)
+  })
+  it('표시(접수 가능)와 배정 가능 판정이 어긋나지 않는다', () => {
+    for (const s of ['시작전', '진행중', '완료'] as const) {
+      expect(isOpenForApply(prog(s))).toBe(isAssignable(prog(s)))
+    }
+  })
+})
+
+describe('isAccountEligible (R14)', () => {
   const acc = (expires: string | null, kind: '운영' | '예비' = '운영'): PoolAccount => ({
     id: 'GPT-001',
     service: 'GPT',
@@ -102,29 +80,19 @@ describe('isAccountEligible (R14-2)', () => {
     expires_on: expires,
   })
 
-  it('대여종료일까지 구독이 남아야 배정 가능', () => {
-    expect(isAccountEligible(acc('2026-09-30'), '2026-09-30')).toBe(true)
-    expect(isAccountEligible(acc('2026-09-29'), '2026-09-30')).toBe(false)
-    expect(isAccountEligible(acc(null), '2026-09-30')).toBe(true)
+  it('오늘 기준으로 구독이 끝나지 않은 운영 계정만 배정 가능', () => {
+    expect(isAccountEligible(acc('2026-11-10'), '2026-11-10')).toBe(true)
+    expect(isAccountEligible(acc('2026-11-09'), '2026-11-10')).toBe(false)
+    expect(isAccountEligible(acc(null), '2026-11-10')).toBe(true)
   })
 
-  it('예비 계정은 자동 배정 풀에서 제외', () => {
-    expect(isAccountEligible(acc(null, '예비'), '2026-09-30')).toBe(false)
-  })
-})
-
-describe('capRemaining (R5)', () => {
-  it('cap 0 은 무제한', () => {
-    expect(capRemaining(0, 100)).toBe(Number.POSITIVE_INFINITY)
-  })
-  it('상한에 도달하면 0', () => {
-    expect(capRemaining(10, 10)).toBe(0)
-    expect(capRemaining(10, 4)).toBe(6)
+  it('예비 계정은 배정 풀에서 제외', () => {
+    expect(isAccountEligible(acc(null, '예비'), '2026-11-10')).toBe(false)
   })
 })
 
 describe('planAllocations (R12·R14) — T3 시나리오', () => {
-  const period = { start: '2026-09-01', end: '2026-09-30' }
+  const today = '2026-09-01'
   const pool: PoolAccount[] = [
     { id: 'GPT-001', service: 'GPT', kind: '운영', expires_on: '2027-03-31' },
     { id: 'CL-001', service: 'Claude', kind: '운영', expires_on: '2027-03-31' },
@@ -135,34 +103,29 @@ describe('planAllocations (R12·R14) — T3 시나리오', () => {
     { id: 'A-3', service_wish: 'Claude', applied_at: '2026-09-01T11:00:00Z' },
   ]
 
-  it('가용 GPT 1·Claude 1 에 3명이면 신청 순으로 2명만 배정된다', () => {
-    const plan = planAllocations({ period, queue, pool, capRemaining: Infinity })
+  it('가용 GPT 1·Claude 1 에 3명이면 신청 순으로 2명만 배정되고 사용 시작일은 배정일', () => {
+    const plan = planAllocations({ today, queue, pool })
     expect(plan).toHaveLength(2)
-    expect(plan[0]).toMatchObject({ assignment_id: 'A-1', account_id: 'GPT-001', service: 'GPT' })
+    expect(plan[0]).toEqual({ assignment_id: 'A-1', account_id: 'GPT-001', service: 'GPT', rent_start: today })
     expect(plan[1]).toMatchObject({ assignment_id: 'A-2', account_id: 'CL-001', service: 'Claude' })
   })
 
   it('신청 순서(applied_at)를 지킨다', () => {
     const shuffled = [queue[2], queue[0], queue[1]]
-    const plan = planAllocations({ period, queue: shuffled, pool, capRemaining: Infinity })
+    const plan = planAllocations({ today, queue: shuffled, pool })
     expect(plan[0].assignment_id).toBe('A-1')
-  })
-
-  it('cap 잔여만큼만 배정한다', () => {
-    const plan = planAllocations({ period, queue, pool, capRemaining: 1 })
-    expect(plan).toHaveLength(1)
   })
 
   it('희망 서비스 재고가 없으면 그 사람은 건너뛰고 대기한다', () => {
     const onlyClaude = [pool[1]]
-    const plan = planAllocations({ period, queue, pool: onlyClaude, capRemaining: Infinity })
+    const plan = planAllocations({ today, queue, pool: onlyClaude })
     expect(plan).toHaveLength(1)
     expect(plan[0].assignment_id).toBe('A-2') // 무관 신청자가 받는다
   })
 
-  it('만료일이 대여종료일보다 이른 계정은 쓰지 않는다', () => {
-    const expiring: PoolAccount[] = [{ id: 'GPT-009', service: 'GPT', kind: '운영', expires_on: '2026-09-15' }]
-    expect(planAllocations({ period, queue, pool: expiring, capRemaining: Infinity })).toHaveLength(0)
+  it('이미 구독이 만료된 계정은 쓰지 않는다', () => {
+    const expired: PoolAccount[] = [{ id: 'GPT-009', service: 'GPT', kind: '운영', expires_on: '2026-08-31' }]
+    expect(planAllocations({ today, queue, pool: expired })).toHaveLength(0)
   })
 })
 

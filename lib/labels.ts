@@ -64,8 +64,22 @@ export const L = {
   },
 } as const
 
-/** 프로그램 상태 순서 (PRD §4-1: 시작전 → 진행중 → 완료) */
+/** 프로그램 상태 순서 (PRD §4-1: 시작전 → 진행중 → 진행완료). DB 값은 '완료' */
 export const PROGRAM_STATUSES = ['시작전', '진행중', '완료'] as const
+
+/** 프로그램 상태 화면 표시명 — DB 값 '완료' 는 「진행완료」로 보인다 (2026-11-10) */
+export const PROGRAM_STATUS_LABEL: Record<(typeof PROGRAM_STATUSES)[number], string> = {
+  시작전: '시작전',
+  진행중: '진행중',
+  완료: '진행완료',
+}
+
+/** 상태별 의미 — 프로그램 화면 안내에 쓴다 */
+export const PROGRAM_STATUS_HELP: Record<(typeof PROGRAM_STATUSES)[number], string> = {
+  시작전: '신청 화면에 「접수 준비 중」(선택 불가), 배정 안 함',
+  진행중: '신청 화면에 「접수중」(선택 가능), 승인·배정 가능',
+  완료: '신청 화면에 「접수 종료」(선택 불가), 새 배정 없음',
+}
 
 /** 상태 배지 색상 (PRD §7) */
 export const STATUS_BADGE: Record<string, string> = {

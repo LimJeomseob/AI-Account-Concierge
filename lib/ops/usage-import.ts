@@ -24,7 +24,7 @@ export async function buildPlan(
 ): Promise<PlanItem[]> {
   const emails = [...new Set(rows.map((r) => r.email).filter(Boolean))]
   const [{ data: programs }, { data: accounts }, { data: existing }] = await Promise.all([
-    db().from('programs').select('id, name, mode, end_on'),
+    db().from('programs').select('id, name'),
     db().from('accounts').select('id, service, status, kind'),
     emails.length > 0
       ? db().from('assignments').select('program_id, email, service, service_wish, status, replaced_at').in('email', emails)

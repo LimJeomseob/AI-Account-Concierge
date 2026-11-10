@@ -4,7 +4,7 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
-import { applyAvailability, periodFor } from '@/lib/assign'
+import { applyAvailability } from '@/lib/assign'
 import { nextAssignmentId, nextUserId } from '@/lib/ids'
 import { log } from '@/lib/state'
 import type { Program, ServiceWish, UserType } from '@/lib/types'
@@ -39,14 +39,12 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     const { data } = await db().from('programs').select('*').eq('name', input.programName).maybeSingle()
     program = (data as Program) ?? null
   }
-  // 내부 프로그램(기관관리자, 0007)은 신청을 받지 않는다
-  if (!program || program.internal) return { ok: false, msg: '아직 등록되지 않은 프로그램입니다. 담당자에게 문의해 주세요.' }
-  // R3: 신청 페이지 표시와 같은 판정을 쓴다 (lib/assign.ts:applyAvailability)
-  const avail = applyAvailability(program, today)
+  if (!program) return { ok: false, msg: '아직 등록되지 않은 프로그램입니다. 담당자에게 문의해 주세요.' }
+  // R3: 신청 페이지 표시와 같은 판정을 쓴다 (lib/assign.ts:applyAvailability) — 상태만 본다.
+  // 내부 프로그램(기관관리자, 0007)도 「진행중」이면 받는다(2026-11-10, 숨김 규칙 폐지).
+  const avail = applyAvailability(program)
   if (avail.reason === '시작전') return { ok: false, msg: '아직 접수를 시작하지 않은 프로그램입니다.' }
   if (avail.reason === '완료') return { ok: false, msg: '종료된 프로그램입니다.' }
-  // 대여기간은 아직 없을 수 있다(진행중·기간 미입력). 그때는 배정 시점에 확정한다.
-  const period = periodFor(program, today)
 
   // R9: 이메일 소문자 정규화 + 같은 프로그램 활성 중복 거부
   // (공개 신청은 프로그램당 1회. DB 인덱스는 0008 부터 플랫폼별이라 한 사람이 두 플랫폼 건을 가질 수 있어 limit(1)로 읽는다)
@@ -114,8 +112,7 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     status: '신청',
     applied_at: nowIso,
     edu_watched_at: input.eduWatchedAt ?? nowIso,
-    rent_start: program.mode === '고정기간' ? (period?.start ?? null) : null,
-    rent_end: program.mode === '고정기간' ? (period?.end ?? null) : null,
+    // 사용 시작일은 배정할 때 정한다(배정일). 종료일은 두지 않는다
   })
   if (aErr) {
     if (/assignments_active_unique/.test(aErr.message)) {

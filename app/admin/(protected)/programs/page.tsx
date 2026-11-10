@@ -1,7 +1,8 @@
-/** 프로그램 (PRD §7-2, R1~R6) */
+/** 프로그램 (PRD §7-2, R1·R3·R6) — 2026-11-10: 상태(시작전·진행중·진행완료) 하나로 운영 */
 import { db } from '@/lib/db'
+import { todayKST } from '@/lib/date'
 import { Button, Card, Table, Td } from '@/components/ui'
-import { L } from '@/lib/labels'
+import { L, PROGRAM_STATUSES, PROGRAM_STATUS_HELP, PROGRAM_STATUS_LABEL } from '@/lib/labels'
 import { programSeedAction } from '@/app/admin/actions'
 import StatusSelect from './StatusSelect'
 import ProgramForm from './ProgramForm'
@@ -10,18 +11,27 @@ import type { Program } from '@/lib/types'
 export const dynamic = 'force-dynamic'
 
 export default async function ProgramsPage() {
-  const [{ data: programs }, { data: avail }, { data: counts }] = await Promise.all([
+  const today = todayKST()
+  const [{ data: programs }, { data: counts }, { data: pool }] = await Promise.all([
     db().from('programs').select('*').order('id'),
-    db().from('program_availability').select('*'),
     db().from('assignments').select('program_id, status'),
+    // 배정 가능 좌석 = 가용 ∧ 운영 ∧ 구독 만료 전 — 프로그램과 무관하다
+    db().from('accounts').select('service, expires_on').eq('status', '가용').eq('kind', '운영'),
   ])
-  const availMap = new Map((avail ?? []).map((a) => [a.program_id, a]))
 
   const used = new Map<string, number>()
+  const inUse = new Map<string, number>()
   for (const c of counts ?? []) {
     if (['배정', '사용중', '회수중', '회수완료'].includes(c.status)) {
       used.set(c.program_id, (used.get(c.program_id) ?? 0) + 1)
     }
+    if (['배정', '사용중'].includes(c.status)) {
+      inUse.set(c.program_id, (inUse.get(c.program_id) ?? 0) + 1)
+    }
+  }
+  const avail = { GPT: 0, Claude: 0 } as Record<string, number>
+  for (const a of pool ?? []) {
+    if (a.expires_on === null || a.expires_on >= today) avail[a.service] = (avail[a.service] ?? 0) + 1
   }
 
   return (
@@ -33,52 +43,34 @@ export default async function ProgramsPage() {
         </form>
       </header>
 
+      <Card title="상태만 고르면 됩니다">
+        <ul className="space-y-1 text-sm text-slate-700">
+          {PROGRAM_STATUSES.map((s) => (
+            <li key={s}>
+              <strong>{PROGRAM_STATUS_LABEL[s]}</strong> — {PROGRAM_STATUS_HELP[s]}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-slate-500">
+          배정받은 사람은 배정일부터 사용하고, 진행완료로 바꿀 때 함께 회수 시작하거나 사용현황에서 회수합니다.
+          지금 배정 가능한 좌석: ChatGPT {avail.GPT}개 / Claude {avail.Claude}개
+        </p>
+      </Card>
+
       <Card title="프로그램 목록">
-        <Table
-          head={[
-            L.program.id, L.program.name, L.program.target, L.program.mode, '대여기간',
-            L.program.cap, '배정 현황', '배정가능(GPT/CL)', L.program.status,
-          ]}
-        >
-          {((programs ?? []) as Program[]).map((p) => {
-            const a = availMap.get(p.id)
-            return (
-              <tr key={p.id}>
-                <Td className="text-xs">{p.id}</Td>
-                <Td>{p.name}</Td>
-                <Td className="text-xs">{p.target}</Td>
-                <Td className="text-xs">{p.mode}</Td>
-                <Td className="text-xs">
-                  {(() => {
-                    const text =
-                      p.mode === '고정기간'
-                        ? p.start_on && p.end_on
-                          ? `${p.start_on} ~ ${p.end_on}`
-                          : null
-                        : p.days > 0
-                          ? `배정일부터 ${p.days}일`
-                          : null
-                    if (text) return text
-                    // 진행중인데 기간이 없으면 접수는 되지만 자동 배정이 보류된다 (R14·R15)
-                    return p.status === '진행중' ? (
-                      <span className="text-amber-700">미설정 — 배정 보류</span>
-                    ) : (
-                      '미설정'
-                    )
-                  })()}
-                </Td>
-                <Td className="text-xs">{p.cap === 0 ? '무제한' : p.cap}</Td>
-                <Td className="text-xs">{used.get(p.id) ?? 0}</Td>
-                <Td className="text-xs">
-                  {a ? `${a.avail_gpt} / ${a.avail_claude}` : '-'}
-                </Td>
-                <Td>
-                  {/* 시작전 → 진행중 → 완료: 드롭다운으로 즉시 저장 (모든 전환은 관리자 수동) */}
-                  <StatusSelect id={p.id} value={p.status} />
-                </Td>
-              </tr>
-            )
-          })}
+        <Table head={[L.program.id, L.program.name, '사용중', '누적 배정', L.program.status]}>
+          {((programs ?? []) as Program[]).map((p) => (
+            <tr key={p.id}>
+              <Td className="text-xs">{p.id}</Td>
+              <Td>{p.name}</Td>
+              <Td className="text-xs">{inUse.get(p.id) ?? 0}</Td>
+              <Td className="text-xs">{used.get(p.id) ?? 0}</Td>
+              <Td>
+                {/* 시작전 → 진행중 → 진행완료: 드롭다운으로 즉시 저장 (모든 전환은 관리자 수동) */}
+                <StatusSelect id={p.id} name={p.name} value={p.status} inUse={inUse.get(p.id) ?? 0} />
+              </Td>
+            </tr>
+          ))}
         </Table>
       </Card>
 
