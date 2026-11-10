@@ -4,12 +4,11 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
-import { periodFor } from '@/lib/assign'
 import { nextAssignmentId } from '@/lib/ids'
 import { queueAdminMail } from '@/lib/mail/queue'
 import { claimAccount, log, transitionAccount, transitionAssignment } from '@/lib/state'
 import { moveAccountToReturning } from '@/lib/ops/assignments'
-import type { IncidentType, Program } from '@/lib/types'
+import type { IncidentType } from '@/lib/types'
 
 /** 장애 신고를 받을 수 있는 배정 상태 — 계정을 실제로 쓰는 중인 건만 */
 export const INCIDENT_REPORTABLE = ['사용중', '배정']
@@ -114,17 +113,13 @@ export async function replaceAccount(
   const service = old.service
   if (!service) throw new Error('서비스가 지정되지 않은 배정입니다.')
 
-  // 대여기간 승계 (없으면 프로그램 기준으로 재계산)
-  let rentStart = old.rent_start
-  let rentEnd = old.rent_end
-  if (!rentStart || !rentEnd) {
-    const { data: program } = await db().from('programs').select('*').eq('id', old.program_id).single()
-    const period = periodFor(program as Program, today)
-    rentStart = period?.start ?? today
-    rentEnd = period?.end ?? today
-  }
+  // 대여기간 승계 — 종료일이 없는 배정(2026-11-10 이후 기본)은 없는 채로 승계한다
+  const rentStart: string = old.rent_start ?? old.assigned_on ?? today
+  const rentEnd: string | null = old.rent_end ?? null
+  // 구독 확인 기준일: 종료일이 있으면 종료일까지, 없으면 오늘 기준으로 만료되지 않은 계정
+  const needUntil = rentEnd && rentEnd > today ? rentEnd : today
 
-  // 대체 후보: 가용 ∧ 같은 서비스 ∧ 대여종료일까지 구독 유지(R27). 예비 우선
+  // 대체 후보: 가용 ∧ 같은 서비스 ∧ 구독 유지(R27). 예비 우선
   const { data: candidates } = await db()
     .from('accounts')
     .select('id, kind, expires_on')
@@ -132,7 +127,7 @@ export async function replaceAccount(
     .is('current_assignment_id', null)
     .eq('service', service)
   const ordered = (candidates ?? [])
-    .filter((c) => c.expires_on === null || c.expires_on >= rentEnd)
+    .filter((c) => c.expires_on === null || c.expires_on >= needUntil)
     .sort((a, b) => (a.kind === b.kind ? a.id.localeCompare(b.id) : a.kind === '예비' ? -1 : 1))
   if (ordered.length === 0) throw new Error(`대체할 ${service} 가용 계정이 없습니다.`)
 

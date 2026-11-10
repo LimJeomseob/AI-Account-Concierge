@@ -12,7 +12,7 @@ import { todayKST } from '@/lib/date'
 import { log } from '@/lib/state'
 import { nextProgramId } from '@/lib/ids'
 import { getSettings, setSetting, type Settings } from '@/lib/settings'
-import { CHECKLIST_FIELDS, PROGRAM_STATUSES } from '@/lib/labels'
+import { CHECKLIST_FIELDS, PROGRAM_STATUSES, PROGRAM_STATUS_LABEL } from '@/lib/labels'
 import type { ProgramStatus } from '@/lib/types'
 import {
   approveAssignments,
@@ -22,6 +22,7 @@ import {
   completeReturn,
   completeReturns,
   startReturns,
+  startProgramReturns,
   manualAssign,
   setChecklist,
 } from '@/lib/ops/assignments'
@@ -215,7 +216,7 @@ export async function assignExportAction(
     revalidatePath('/admin/assignments')
     revalidatePath('/admin/dashboard')
     revalidatePath('/admin/accounts')
-    const msg = assignExportMessage(r.assigned.length, r.noPeriod, r.shortage)
+    const msg = assignExportMessage(r.assigned.length, r.notOpen, r.shortage)
     if (r.assigned.length === 0) return { ok: false, msg }
     return { ok: true, msg, csv: assignedCsv(r.assigned), filename: `assigned-${todayKST().replace(/-/g, '')}.csv` }
   } catch (e) {
@@ -227,6 +228,7 @@ export async function assignExportAction(
 
 /**
  * 프로그램 등록·수정. id 가 비어 있으면 신규로 보고 자동 채번(R1).
+ * 2026-11-10: 입력은 이름·상태·비고만. 대상·대여방식·기간·상한 열은 DB 에 남아 있으나 쓰지 않으므로 건드리지 않는다.
  * 오류는 예외 대신 메시지로 돌려준다(화면 전체 오류 페이지 방지).
  */
 export async function programSaveAction(
@@ -243,12 +245,6 @@ export async function programSaveAction(
   const row = {
     id,
     name,
-    target: str(fd, 'target') || '혼합',
-    mode: str(fd, 'mode') || '고정기간',
-    days: num(fd, 'days'),
-    start_on: str(fd, 'start_on') || null,
-    end_on: str(fd, 'end_on') || null,
-    cap: num(fd, 'cap'),
     status: parseProgramStatus(str(fd, 'status')) ?? '시작전',
     note: str(fd, 'note') || null,
   }
@@ -282,7 +278,7 @@ export async function programSeedAction() {
       days: 0,
       cap: 0,
       status: '시작전',
-      note: `${p.group} / ${p.season} / 대여기간 입력 필요`,
+      note: `${p.group} / ${p.season}`,
     })
     if (error) throw new Error(error.message)
     n += 1
@@ -295,19 +291,32 @@ function parseProgramStatus(v: string): ProgramStatus | null {
   return (PROGRAM_STATUSES as readonly string[]).includes(v) ? (v as ProgramStatus) : null
 }
 
-/** 프로그램 상태 전환 (시작전·진행중·완료) — 목록 드롭다운에서 즉시 저장. 모든 전환은 관리자 수동 */
-export async function programStatusAction(fd: FormData) {
+/**
+ * 프로그램 상태 전환 (시작전·진행중·진행완료) — 목록 드롭다운에서 즉시 저장. 모든 전환은 관리자 수동.
+ * 진행완료로 바꿀 때 확인창에서 고르면(startReturns=true) 그 프로그램의 배정·사용중 건을 함께 회수 시작한다.
+ * 오류는 예외 대신 메시지로 돌려준다.
+ */
+export async function programStatusAction(fd: FormData): Promise<{ ok: boolean; msg: string }> {
   const actor = await requireAdminAction()
   const id = str(fd, 'id')
   const status = parseProgramStatus(str(fd, 'status'))
-  if (!id || !status) throw new Error('잘못된 상태 값입니다.')
+  if (!id || !status) return { ok: false, msg: '잘못된 상태 값입니다.' }
   const { data: before } = await db().from('programs').select('status').eq('id', id).maybeSingle()
   const { error } = await db().from('programs').update({ status }).eq('id', id)
-  if (error) throw new Error(error.message)
+  if (error) return { ok: false, msg: error.message }
   await log(actor, 'program.status', id, { from: before?.status ?? null, to: status })
+
+  let msg = `${id} 상태를 「${PROGRAM_STATUS_LABEL[status]}」로 바꿨습니다.`
+  if (status === '완료' && bool(fd, 'startReturns')) {
+    const r = await startProgramReturns(id, actor)
+    msg += ` ${bulkMessage('회수 시작', r)} — 사용현황에서 체크 2개 후 회수 완료해 주세요.`
+    revalidatePath('/admin/assignments')
+    revalidatePath('/admin/accounts')
+  }
   revalidatePath('/admin/programs')
   revalidatePath('/admin/dashboard')
   revalidatePath('/apply')
+  return { ok: true, msg }
 }
 
 // --- 계정 -------------------------------------------------------------------

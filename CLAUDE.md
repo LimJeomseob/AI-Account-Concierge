@@ -40,10 +40,10 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | 규칙 | 위치 |
 |---|---|
 | R1·R6 프로그램 채번·시드 | `lib/ids.ts`, `lib/seed-data.ts`, `app/admin/actions.ts:programSeedAction` |
-| R2·R15 대여기간 | `lib/assign.ts:periodFor / isAssignable` |
-| R3 공개 프로그램 목록·상태별 표시 | `lib/assign.ts:applyAvailability / isOpenForApply`, `app/api/public/programs` |
-| R4 프로그램 자동 종료 | 폐지 — 상태(시작전·진행중·완료) 전환은 관리자 드롭다운 수동 `app/admin/actions.ts:programStatusAction` |
-| R5 배정상한 | `lib/assign.ts:capRemaining` |
+| R2·R15 대여기간 | 폐지(2026-11-10) — 사용 시작 = 배정일, 종료일 없음(진행완료·회수 시작 때 끝남). 판정은 `lib/assign.ts:isAssignable`(진행중) |
+| R3·R8 신청 가능 여부(상태만) | `lib/assign.ts:applyAvailability / isOpenForApply` — `/apply`·`app/api/public/programs`·`lib/ops/apply.ts` 가 같은 함수. 내부 프로그램 숨김 폐지 |
+| R4 프로그램 자동 종료 | 폐지 — 상태(시작전·진행중·진행완료(DB 값 완료)) 전환은 관리자 드롭다운 수동 `app/admin/actions.ts:programStatusAction`, 진행완료 시 선택적으로 `startProgramReturns` |
+| R5 배정상한 | 폐지(2026-11-10) — 가용 계정 수가 곧 한도 |
 | R7~R11 신청 접수 | `lib/ops/apply.ts`, `app/api/public/apply` |
 | R12·R14 배정 = 유료계정 사용현황의 「선택 승인 + 배정 + 이메일 내려받기」·「승인 대기 일괄 배정」만 (자동 배정 폐지 2026-10-29) | `lib/ops/assignments.ts:assignApprovedForExport` → `autoAssignProgram`, `lib/assign.ts:planAllocations`, `app/admin/actions.ts:approveAssignExportAction / assignExportAction`, `lib/ops/export.ts:assignedCsv` |
 | 사용현황 필터(전체·상태·프로그램·플랫폼·이름·이메일·계정번호) | `lib/filter.ts` — 목록·CSV·배정 공통 |

@@ -2,19 +2,17 @@
 import ApplyForm from './ApplyForm'
 import { db } from '@/lib/db'
 import { applyAvailability } from '@/lib/assign'
-import { todayKST } from '@/lib/date'
 import { getSettings } from '@/lib/settings'
 import type { Program } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ApplyPage() {
-  const today = todayKST()
   const s = await getSettings()
-  const { data } = await db().from('programs').select('*').order('id')
-  // R3: 프로그램 상태(시작전·진행중·완료) ↔ 드롭다운 표시는 applyAvailability 가 결정
-  const programs = ((data ?? []) as Program[]).map((p) => {
-    const a = applyAvailability(p, today)
+  const { data } = await db().from('programs').select('id, name, status').order('id')
+  // R3: 프로그램 상태(시작전·진행중·진행완료) ↔ 드롭다운 표시는 applyAvailability 가 결정 — 접수 검증과 같은 함수
+  const programs = ((data ?? []) as Pick<Program, 'id' | 'name' | 'status'>[]).map((p) => {
+    const a = applyAvailability(p)
     return { id: p.id, name: p.name, open: a.open, label: a.label, period: a.period }
   })
 

@@ -1,9 +1,12 @@
 /**
- * 자동 배정 알고리즘 — 순수 함수 (PRD R5·R12·R14·R15)
- * DB 접근은 lib/actions/assign-db.ts 가 담당하고, 판단 로직은 모두 여기에 둔다.
+ * 접수·배정 판정과 자동 배정 알고리즘 — 순수 함수 (PRD R3·R12·R14)
+ * DB 접근은 lib/ops/* 가 담당하고, 판단 로직은 모두 여기에 둔다.
+ *
+ * 2026-11-10: 프로그램은 관리자가 고른 상태(시작전·진행중·진행완료) 하나로만 운영한다.
+ * 대여방식·기간·배정상한·내부 여부는 더 이상 접수·배정 판정에 쓰지 않는다(열은 DB 에 남아 있음).
  */
-import { addDays, toKSTDate, todayKST } from '@/lib/date'
-import type { Period, Program, Service, ServiceWish } from '@/lib/types'
+import { toKSTDate, todayKST } from '@/lib/date'
+import type { Program, Service, ServiceWish } from '@/lib/types'
 
 /** 배정 가능한 계정(풀 원소) */
 export interface PoolAccount {
@@ -24,29 +27,11 @@ export interface Allocation {
   assignment_id: string
   account_id: string
   service: Service
+  /** 사용 시작일 = 배정일. 종료일은 두지 않는다 — 진행완료·회수 시작 때 끝난다 */
   rent_start: string
-  rent_end: string
 }
 
-/**
- * R2·R15: 프로그램의 대여기간.
- * - 고정기간: start_on ~ end_on (전원 동일)
- * - 배정일기준: 기준일 ~ 기준일 + (days − 1)
- * 기간이 설정되지 않았으면 null (R3: 「접수 준비 중」).
- */
-export function periodFor(
-  program: Pick<Program, 'mode' | 'days' | 'start_on' | 'end_on'>,
-  baseDate: string = todayKST(),
-): Period | null {
-  if (program.mode === '고정기간') {
-    if (!program.start_on || !program.end_on) return null
-    return { start: program.start_on, end: program.end_on }
-  }
-  if (!program.days || program.days <= 0) return null
-  return { start: baseDate, end: addDays(baseDate, program.days - 1) }
-}
-
-/** R3: 접수 불가 사유 */
+/** R3: 접수 불가 사유 (DB 값 「완료」 = 화면 표시 「진행완료」) */
 export type ApplyBlockReason = '시작전' | '완료'
 
 export interface ApplyAvailability {
@@ -64,84 +49,55 @@ export const APPLY_BLOCK_LABEL: Record<ApplyBlockReason, string> = {
 }
 
 export const APPLY_OPEN_LABEL = '접수중'
-/** 대여기간을 아직 입력하지 않은 「진행중」 프로그램의 기간 표시 */
-export const PERIOD_TBD = '대여기간 추후 안내(배정 시 확정)'
+/** 신청 화면·접수 완료 안내의 대여기간 문구 — 프로그램이 진행완료되면 회수한다 */
+export const RENT_PERIOD_TEXT = '프로그램 진행 기간 동안 사용(진행완료 시 회수)'
 
 /**
- * R3: 프로그램 상태 ↔ 신청 페이지 표시를 한 곳에서 결정한다.
- * 공개 API·/apply 페이지·접수 검증(lib/ops/apply.ts)이 모두 이 함수를 쓴다.
- * - 시작전 → 접수 준비 중 (선택 불가)
- * - 진행중 → 접수중 (선택 가능). 대여기간이 아직 없으면 「추후 안내」로 표시하고 접수는 받는다.
- * - 완료   → 접수 종료 (선택 불가)
+ * R3·R8: 프로그램 상태 ↔ 신청 가능 여부를 한 곳에서 결정한다.
+ * /apply 페이지·공개 API·접수 검증(lib/ops/apply.ts)이 모두 이 함수를 쓴다 — 표시와 실제 접수가 어긋나지 않게.
+ * - 시작전   → 접수 준비 중 (선택 불가)
+ * - 진행중   → 접수중 (선택 가능)
+ * - 진행완료 → 접수 종료 (선택 불가)
+ * 내부 프로그램(기관관리자, 0007)도 같은 규칙을 따른다(2026-11-10, 숨김 규칙 폐지).
  */
-export function applyAvailability(
-  program: Pick<Program, 'mode' | 'days' | 'start_on' | 'end_on' | 'status'>,
-  today: string = todayKST(),
-): ApplyAvailability {
+export function applyAvailability(program: Pick<Program, 'status'>): ApplyAvailability {
   if (program.status !== '진행중') {
     const reason: ApplyBlockReason = program.status === '완료' ? '완료' : '시작전'
     return { open: false, reason, label: APPLY_BLOCK_LABEL[reason], period: APPLY_BLOCK_LABEL[reason] }
   }
-  const period = periodFor(program, today)
-  return {
-    open: true,
-    reason: null,
-    label: APPLY_OPEN_LABEL,
-    period: !period
-      ? PERIOD_TBD
-      : program.mode === '고정기간'
-        ? `${period.start} ~ ${period.end}`
-        : `배정일부터 ${program.days}일`,
-  }
+  return { open: true, reason: null, label: APPLY_OPEN_LABEL, period: RENT_PERIOD_TEXT }
 }
 
 /** R3: 공개 신청 페이지에서 선택할 수 있는 프로그램인가 (상태 「진행중」) */
-export function isOpenForApply(
-  program: Pick<Program, 'mode' | 'days' | 'start_on' | 'end_on' | 'status'>,
-  today: string = todayKST(),
-): boolean {
-  return applyAvailability(program, today).open
+export function isOpenForApply(program: Pick<Program, 'status'>): boolean {
+  return applyAvailability(program).open
 }
 
-/** R15: 자동 배정 대상 프로그램인가 (진행중만, 고정기간은 end_on ≤ 오늘이면 제외) */
-export function isAssignable(
-  program: Pick<Program, 'mode' | 'days' | 'start_on' | 'end_on' | 'status'>,
-  today: string = todayKST(),
-): boolean {
-  if (program.status !== '진행중') return false
-  const period = periodFor(program, today)
-  if (!period) return false
-  if (program.mode === '고정기간' && period.end <= today) return false
-  return true
+/** R14: 배정 대상 프로그램인가 — 상태 「진행중」이면 된다(기간·상한 조건 없음) */
+export function isAssignable(program: Pick<Program, 'status'>): boolean {
+  return program.status === '진행중'
 }
 
-/** R14-2: 대여종료일까지 구독이 유지되는 계정만 사용 */
-export function isAccountEligible(account: PoolAccount, rentEnd: string): boolean {
+/** R14: 운영 계정이고 구독이 오늘 기준으로 끝나지 않았으면 배정 가능 */
+export function isAccountEligible(account: PoolAccount, today: string = todayKST()): boolean {
   if (account.kind !== '운영') return false
-  return account.expires_on === null || account.expires_on >= rentEnd
-}
-
-/** R5: cap 잔여 = cap − (배정·사용중·회수중·회수완료 건수). cap 0 이면 무제한 */
-export function capRemaining(cap: number, occupied: number): number {
-  if (!cap || cap <= 0) return Number.POSITIVE_INFINITY
-  return Math.max(0, cap - occupied)
+  return account.expires_on === null || account.expires_on >= today
 }
 
 /**
- * R14: 프로그램 단위 자동 배정 계획을 만든다(부수효과 없음).
- * 1) 가용 풀을 서비스별로 나눔
+ * R14: 프로그램 단위 배정 계획을 만든다(부수효과 없음).
+ * 1) 가용 풀을 서비스별로 나눔 (만료된 계정 제외)
  * 2) 대기열을 신청 순(applied_at)으로 순회
  * 3) 희망 서비스가 있으면 해당 풀, 「무관」이면 잔량이 많은 쪽
- * 4) cap 잔여 소진 또는 풀 소진 시 중단
+ * 4) 풀 소진 시 중단
  */
 export function planAllocations(input: {
-  period: Period
+  today: string
   queue: QueueItem[]
   pool: PoolAccount[]
-  capRemaining: number
 }): Allocation[] {
-  const { period, capRemaining: capLeft } = input
-  const eligible = input.pool.filter((a) => isAccountEligible(a, period.end))
+  const { today } = input
+  const eligible = input.pool.filter((a) => isAccountEligible(a, today))
   const byService: Record<Service, PoolAccount[]> = {
     GPT: eligible.filter((a) => a.service === 'GPT'),
     Claude: eligible.filter((a) => a.service === 'Claude'),
@@ -155,10 +111,8 @@ export function planAllocations(input: {
   )
 
   const out: Allocation[] = []
-  let left = capLeft
 
   for (const item of queue) {
-    if (left <= 0) break
     if (byService.GPT.length === 0 && byService.Claude.length === 0) break
 
     let service: Service | null = null
@@ -176,10 +130,8 @@ export function planAllocations(input: {
       assignment_id: item.id,
       account_id: account.id,
       service,
-      rent_start: period.start,
-      rent_end: period.end,
+      rent_start: today,
     })
-    left -= 1
   }
   return out
 }

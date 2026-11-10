@@ -5,13 +5,11 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
-import { capRemaining, chunk, isAssignable, periodFor, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
+import { chunk, isAssignable, planAllocations, type PoolAccount, type QueueItem } from '@/lib/assign'
 import { claimAccount, log, releaseClaim, transitionAccount, transitionAssignment } from '@/lib/state'
 import { CHECKLIST_FIELDS } from '@/lib/labels'
 import { applyFilter, type ApplicantFilter } from '@/lib/ops/export'
 import type { Program, Service } from '@/lib/types'
-
-const ACTIVE_OCCUPYING = ['배정', '사용중', '회수중', '회수완료'] as const
 
 /**
  * 배정 범위 제한.
@@ -81,7 +79,8 @@ async function assignSeat(opts: {
 }
 
 /**
- * R14: 프로그램 1개에 대한 자동 배정.
+ * R14: 프로그램 1개에 대한 배정. 프로그램이 「진행중」이면 된다(대여기간·배정상한 조건은 2026-11-10 폐지).
+ * 사용 시작일 = 배정일, 종료일은 비워 둔다 — 진행완료로 바꿀 때 또는 관리자가 회수를 시작할 때 끝난다.
  * 반환: 실제로 배정된 배정ID 목록.
  */
 export async function autoAssignProgram(
@@ -91,21 +90,9 @@ export async function autoAssignProgram(
   scope?: AssignScope,
 ): Promise<string[]> {
   if (scope?.programIds && !scope.programIds.includes(programId)) return []
-  const { data: program } = await db().from('programs').select('*').eq('id', programId).single()
+  const { data: program } = await db().from('programs').select('id, status').eq('id', programId).single()
   if (!program) return []
-  const p = program as Program
-  if (!isAssignable(p, today)) return []
-  const period = periodFor(p, today)
-  if (!period) return []
-
-  const { count: occupied } = await db()
-    .from('assignments')
-    .select('id', { count: 'exact', head: true })
-    .eq('program_id', programId)
-    .in('status', ACTIVE_OCCUPYING as unknown as string[])
-
-  const left = capRemaining(p.cap, occupied ?? 0)
-  if (left <= 0) return []
+  if (!isAssignable(program as Pick<Program, 'status'>)) return []
 
   let queueQ = db()
     .from('assignments')
@@ -120,7 +107,7 @@ export async function autoAssignProgram(
   if (queue.length === 0) return []
 
   const pool = await availablePool(scope)
-  const plan = planAllocations({ period, queue, pool, capRemaining: left })
+  const plan = planAllocations({ today, queue, pool })
 
   const assigned: string[] = []
   for (const alloc of plan) {
@@ -133,9 +120,9 @@ export async function autoAssignProgram(
         service: alloc.service satisfies Service,
         assigned_on: today,
         rent_start: alloc.rent_start,
-        rent_end: alloc.rent_end,
+        rent_end: null,
       },
-      detail: { service: alloc.service, period },
+      detail: { service: alloc.service },
     })
     if (!ok) continue // 계정을 다른 처리가 먼저 가져갔거나 대기열 상태가 바뀜
 
@@ -180,16 +167,15 @@ export async function approveAssignments(
 export interface ExportAssignResult {
   /** 이번에 배정된 신청자 — 관리자가 이 이메일들을 팀 워크스페이스에 초대한다 */
   assigned: Array<{ id: string; name: string; email: string; account_id: string }>
-  /** 대상 승인 건 중 대여기간이 없거나 진행중이 아닌 프로그램이라 배정하지 못한 수 */
-  noPeriod: number
-  /** 대상 승인 건 중 가용 계정·배정상한이 모자라 대기로 남은 수 */
+  /** 대상 승인 건 중 프로그램이 「진행중」이 아니라 배정하지 못한 수 */
+  notOpen: number
+  /** 대상 승인 건 중 가용 계정이 모자라 대기로 남은 수 */
   shortage: number
 }
 
 /**
  * R14: 「승인 건 배정 + 메일 내려받기」 — 화면 필터(프로그램·검색어)에 걸린 「승인」 건을 신청 순으로
- * 가용 계정에 배정한다. 프로그램별로 autoAssignProgram 을 그대로 써서 상한(R5)·대여기간(R15)·
- * 희망 서비스·조건부 선점을 지킨다.
+ * 가용 계정에 배정한다. 프로그램별로 autoAssignProgram 을 그대로 써서 진행중 여부·희망 서비스·조건부 선점을 지킨다.
  */
 export async function assignApprovedForExport(
   filter: ApplicantFilter,
@@ -208,17 +194,17 @@ export async function assignApprovedForExport(
   if (error) throw new Error(error.message)
   const rows = targets ?? []
   const ids = rows.map((r) => r.id)
-  if (ids.length === 0) return { assigned: [], noPeriod: 0, shortage: 0 }
+  if (ids.length === 0) return { assigned: [], notOpen: 0, shortage: 0 }
 
   const byProgram = new Map<string, number>()
   for (const r of rows) byProgram.set(r.program_id, (byProgram.get(r.program_id) ?? 0) + 1)
 
   const assignedIds: string[] = []
-  let noPeriod = 0
+  let notOpen = 0
   for (const [pid, count] of byProgram) {
-    const { data: program } = await db().from('programs').select('*').eq('id', pid).maybeSingle()
-    if (!program || !isAssignable(program as Program, today)) {
-      noPeriod += count
+    const { data: program } = await db().from('programs').select('id, status').eq('id', pid).maybeSingle()
+    if (!program || !isAssignable(program as Pick<Program, 'status'>)) {
+      notOpen += count
       continue
     }
     assignedIds.push(...(await autoAssignProgram(pid, actor, today, { ...scope, assignmentIds: ids })))
@@ -233,16 +219,16 @@ export async function assignApprovedForExport(
       .order('applied_at', { ascending: true })
     assigned = (data ?? []).map((r) => ({ id: r.id, name: r.name, email: r.email, account_id: r.account_id as string }))
   }
-  const shortage = ids.length - noPeriod - assigned.length
+  const shortage = ids.length - notOpen - assigned.length
   // R31: 건수만 기록 — 이메일 등 개인정보는 남기지 않는다
   await log(actor, 'assignments.assign_export', null, {
     targets: ids.length,
     assigned: assigned.length,
-    no_period: noPeriod,
+    not_open: notOpen,
     shortage,
     program: filter.program ?? '',
   })
-  return { assigned, noPeriod, shortage }
+  return { assigned, notOpen, shortage }
 }
 
 /**
@@ -422,20 +408,21 @@ export async function manualAssign(
   if (!a) throw new Error(`배정 ${assignmentId} 없음`)
   if (a.status !== '승인') throw new Error('승인 상태의 신청만 수동 배정할 수 있습니다.')
 
-  const { data: program } = await db().from('programs').select('*').eq('id', a.program_id).single()
-  const period = periodFor(program as Program, today)
-  if (!period) throw new Error('프로그램 대여기간이 설정되지 않았습니다.')
+  const { data: program } = await db().from('programs').select('status').eq('id', a.program_id).single()
+  if (!program || !isAssignable(program as Pick<Program, 'status'>)) {
+    throw new Error('「진행중」인 프로그램의 신청만 배정할 수 있습니다.')
+  }
 
-
-  const { data: acc } = await db().from('accounts').select('service').eq('id', accountId).maybeSingle()
+  const { data: acc } = await db().from('accounts').select('service, kind, expires_on').eq('id', accountId).maybeSingle()
   if (!acc) throw new Error(`계정 ${accountId} 없음`)
+  if (acc.expires_on && acc.expires_on < today) throw new Error(`계정 ${accountId} 는 구독이 만료됐습니다(${acc.expires_on}).`)
 
   const ok = await assignSeat({
     assignmentId,
     accountId,
     actor,
     action: 'assignment.assign.manual',
-    patch: { service: acc.service, assigned_on: today, rent_start: period.start, rent_end: period.end },
+    patch: { service: acc.service, assigned_on: today, rent_start: today, rent_end: null },
   })
   if (!ok) throw new Error('해당 계정이 가용 상태가 아니거나, 신청 건 상태가 바뀌었습니다. 새로고침 후 다시 시도해 주세요.')
 }
@@ -504,6 +491,31 @@ export async function completeReturns(ids: string[], actor: string, today: strin
     }
   }
   return out
+}
+
+/** 프로그램의 「배정·사용중」 건 수 — 진행완료 전환 확인창에 보여 준다 */
+export async function countInUse(programId: string): Promise<number> {
+  const { count, error } = await db()
+    .from('assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('program_id', programId)
+    .in('status', ['배정', '사용중'])
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
+/**
+ * 프로그램 진행완료와 함께 그 프로그램의 「배정·사용중」 건을 모두 회수 시작한다 (2026-11-10).
+ * 처리는 「선택 회수 시작」(startReturns)과 같다 — 계정은 회수중, 체크 2개 후 회수 완료(R24).
+ */
+export async function startProgramReturns(programId: string, actor: string): Promise<BulkResult> {
+  const { data, error } = await db()
+    .from('assignments')
+    .select('id')
+    .eq('program_id', programId)
+    .in('status', ['배정', '사용중'])
+  if (error) throw new Error(error.message)
+  return startReturns((data ?? []).map((r) => r.id as string), actor)
 }
 
 /** 선택 취소 (R17) — 회수완료·취소 건은 건너뛴다 */
