@@ -157,8 +157,16 @@ export interface PlanContext {
   accounts: Array<{ id: string; service: string; status: string; kind: string }>
   /** 「이메일|플랫폼」 — 이미 배정·사용중·회수중인 조합 */
   activeKeys: Set<string>
-  /** 「프로그램|이메일|플랫폼」 — 같은 프로그램·플랫폼에 신청~회수완료 건이 이미 있는 조합(R9 중복 방지 인덱스, 0008) */
+  /**
+   * 「프로그램|이메일|플랫폼」 — 같은 프로그램·플랫폼에 진행 중(신청·승인·배정·사용중) 건이 이미 있는 조합
+   * (R9 중복 방지 인덱스 0009, lib/assign.ts:DUPLICATE_BLOCK_STATUSES). 「사용중」 등록에만 쓴다.
+   */
   programEmailKeys: Set<string>
+  /**
+   * 「프로그램|이메일|플랫폼|사용시작」 — 이미 등록된 회수완료 이력(같은 파일을 두 번 올리는 것 방지).
+   * DB 인덱스가 회수완료를 보지 않으므로(0009) 앱에서 막는다. 「회수완료」 등록에만 쓴다.
+   */
+  returnedKeys?: Set<string>
 }
 
 export interface PlanItem {
@@ -217,8 +225,15 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
     if (ctx.mode === '사용중' && (ctx.activeKeys.has(activeKey) || seenActive.has(activeKey))) {
       return { ...base, action: 'skip', msg: seenActive.has(activeKey) ? '파일 안에서 같은 이메일·플랫폼 중복' : '이미 사용중 — 건너뜀' }
     }
-    if (ctx.programEmailKeys.has(programKey)) return fail('같은 프로그램·플랫폼에 이 이메일의 신청~회수완료 건이 이미 있음(R9)')
-    if (seenProgram.has(programKey)) return fail('파일 안에서 같은 프로그램·이메일·플랫폼 중복')
+    // R9(2026-11-17): 회수중·회수완료 이력이 있어도 같은 프로그램에 다시 등록할 수 있다.
+    //  · 사용중: 같은 프로그램·플랫폼에 진행 중 건이 있으면 오류
+    //  · 회수완료: 같은 사용시작의 회수완료 이력이 이미 있으면 오류(다른 날짜의 지난 사용은 따로 남길 수 있다)
+    const dupKey = ctx.mode === '회수완료' ? `${programKey}|${base.start ?? ''}` : programKey
+    if (ctx.mode === '사용중' && ctx.programEmailKeys.has(programKey)) {
+      return fail('같은 프로그램·플랫폼에 이 이메일의 진행 중(신청~사용중) 건이 이미 있음(R9)')
+    }
+    if (ctx.mode === '회수완료' && ctx.returnedKeys?.has(dupKey)) return fail('같은 사용시작의 회수완료 이력이 이미 있음')
+    if (seenProgram.has(dupKey)) return fail('파일 안에서 같은 프로그램·이메일·플랫폼 중복')
 
     // 계정은 CSV 로 받지 않고 업로드 후 자동 부여 — 「사용중」만, 가용·운영 계정을 번호 순으로(R14)
     // 가용 계정이 모자라도 오류로 막지 않고 계정 없이 기록으로 저장한다(2026-10-29 운영자 결정)
@@ -233,7 +248,7 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
     }
 
     seenActive.add(activeKey)
-    seenProgram.add(programKey)
+    seenProgram.add(dupKey)
     return { ...base, accountId, action: 'new', msg }
   })
 }

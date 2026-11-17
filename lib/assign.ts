@@ -73,6 +73,52 @@ export function isOpenForApply(program: Pick<Program, 'status'>): boolean {
   return applyAvailability(program).open
 }
 
+/**
+ * R9: 같은 프로그램(·플랫폼) 중복 신청을 막는 「진행 중」 상태 (2026-11-17 개정).
+ * 회수중·회수완료는 빠진다 — 계정을 반납했거나 반납 중인 사람은 같은 프로그램에 다시 신청할 수 있다.
+ * DB 유일 인덱스 assignments_active_unique(0009)의 조건과 같아야 한다.
+ */
+export const DUPLICATE_BLOCK_STATUSES = ['신청', '승인', '배정', '사용중'] as const
+
+/** R9: 이 상태의 건이 있으면 같은 프로그램에 새 신청을 받지 않는다 */
+export function blocksReapply(status: string): boolean {
+  return (DUPLICATE_BLOCK_STATUSES as readonly string[]).includes(status)
+}
+
+/** 재신청 표시에 쓰는 이전 건 상태 — 반납 중이거나 반납을 마친 건 */
+const PRIOR_STATUSES = ['회수중', '회수완료']
+
+export interface ReapplyInfo {
+  /** 같은 프로그램·이메일의 이전 건(회수중·회수완료) 수 */
+  prior: number
+  /** 이전 건 중 아직 회수중인 건이 있다 — 승인하면 잠시 계정 2개를 갖게 된다 */
+  returning: boolean
+}
+
+/**
+ * R9: 「신청」·「승인」 건마다 같은 프로그램에 이전 건(회수중·회수완료)이 있으면 재신청으로 표시한다.
+ * 장애 대체로 끝난 원 배정(replaced_at)은 같은 사용의 일부라 세지 않는다.
+ */
+export function reapplyInfo(
+  rows: Array<{ id: string; program_id: string; email: string; status: string }>,
+  history: Array<{ id: string; program_id: string; email: string; status: string; replaced_at: string | null }>,
+): Map<string, ReapplyInfo> {
+  const byKey = new Map<string, ReapplyInfo>()
+  for (const h of history) {
+    if (!PRIOR_STATUSES.includes(h.status) || h.replaced_at) continue
+    const key = `${h.program_id}|${h.email.toLowerCase()}`
+    const cur = byKey.get(key) ?? { prior: 0, returning: false }
+    byKey.set(key, { prior: cur.prior + 1, returning: cur.returning || h.status === '회수중' })
+  }
+  const out = new Map<string, ReapplyInfo>()
+  for (const r of rows) {
+    if (r.status !== '신청' && r.status !== '승인') continue
+    const info = byKey.get(`${r.program_id}|${r.email.toLowerCase()}`)
+    if (info) out.set(r.id, info)
+  }
+  return out
+}
+
 /** R14: 배정 대상 프로그램인가 — 상태 「진행중」이면 된다(기간·상한 조건 없음) */
 export function isAssignable(program: Pick<Program, 'status'>): boolean {
   return program.status === '진행중'

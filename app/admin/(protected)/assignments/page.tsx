@@ -13,6 +13,7 @@ import { Badge, Button, Card, Td } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 import { CHECKLIST_FIELDS, L } from '@/lib/labels'
 import { applicantEmails } from '@/lib/ops/export'
+import { chunk, reapplyInfo, type ReapplyInfo } from '@/lib/assign'
 import { applyFilter, exportQuery, parseFilter, type ApplicantFilter } from '@/lib/filter'
 import { getSettings } from '@/lib/settings'
 import { supportStatus } from '@/lib/report'
@@ -71,6 +72,21 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
   for (const r of statusRows ?? []) byStatus.set(r.status, (byStatus.get(r.status) ?? 0) + 1)
   const totalAll = (statusRows ?? []).length
   const support = supportStatus(accRows ?? [], { GPT: s.contract_gpt, Claude: s.contract_claude })
+
+  // R9 재신청 표시 — 「신청」·「승인」 건의 같은 프로그램 이전 건(회수중·회수완료)을 센다(2026-11-17)
+  const pendingEmails = [...new Set(list.filter((r) => r.status === '신청' || r.status === '승인').map((r) => r.email))]
+  const history = (
+    await Promise.all(
+      chunk(pendingEmails, 100).map((part) =>
+        db()
+          .from('assignments')
+          .select('id, program_id, email, status, replaced_at')
+          .in('email', part)
+          .in('status', ['회수중', '회수완료']),
+      ),
+    )
+  ).flatMap((x) => x.data ?? [])
+  const reapply = reapplyInfo(list, history)
 
   // 계정의 로그인 이메일(계정명) — 안내문에 쓴다
   const accountIds = [...new Set(list.map((r) => r.account_id).filter((v): v is string => !!v))]
@@ -269,6 +285,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
 
           <UsageTable
             rows={list}
+            reapply={reapply}
             manage={(r) => {
               if (['배정', '사용중'].includes(r.status) && r.account_id) {
                 return <CopyButton value={guide(r)} label="안내문 복사" />
@@ -382,7 +399,15 @@ type UsageRow = {
 
 const HEAD = ['접수번호', '이름', '이메일', '프로그램', L.account.id, '상태', '관리', '대여기간', '사용 개시', '희망']
 
-function UsageTable({ rows, manage }: { rows: Array<Record<string, unknown>>; manage: (r: UsageRow) => ReactNode }) {
+function UsageTable({
+  rows,
+  reapply,
+  manage,
+}: {
+  rows: Array<Record<string, unknown>>
+  reapply: Map<string, ReapplyInfo>
+  manage: (r: UsageRow) => ReactNode
+}) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gnu-line">
       <table className="w-full min-w-[960px] border-collapse text-[15px] [&_tbody_tr]:odd:bg-white [&_tbody_tr]:even:bg-slate-50/60 [&_tbody_tr]:hover:bg-gnu-sky/50">
@@ -401,6 +426,7 @@ function UsageTable({ rows, manage }: { rows: Array<Record<string, unknown>>; ma
         <tbody>
           {rows.map((r) => {
             const row = r as UsageRow
+            const re = reapply.get(row.id)
             return (
               <tr key={row.id}>
                 <Td>
@@ -419,6 +445,14 @@ function UsageTable({ rows, manage }: { rows: Array<Record<string, unknown>>; ma
                 <Td className="whitespace-nowrap text-xs">{row.account_id ? `${row.account_id} (${row.service})` : '-'}</Td>
                 <Td className="whitespace-nowrap">
                   <Badge value={row.status} />
+                  {re && (
+                    <span
+                      className={`mt-1 block text-[11px] ${re.returning ? 'text-amber-700' : 'text-slate-500'}`}
+                      title="같은 프로그램에서 계정을 반납했거나 반납 중인 이전 건이 있습니다"
+                    >
+                      재신청 · 이전 {re.prior}회{re.returning ? ' (이전 건 회수중)' : ''}
+                    </span>
+                  )}
                 </Td>
                 <Td className="text-xs">{manage(row)}</Td>
                 <Td className="whitespace-nowrap text-xs">

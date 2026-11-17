@@ -13,9 +13,10 @@ import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
 import { nextAssignmentId, nextUserId } from '@/lib/ids'
 import { claimAccount, log, releaseClaim, transitionAssignment } from '@/lib/state'
+import { blocksReapply } from '@/lib/assign'
 import { planImport, type ImportMode, type ImportRow, type PlanItem } from '@/lib/usage-import'
 
-const PROGRAM_KEY_STATUSES = ['신청', '승인', '배정', '사용중', '회수중', '회수완료']
+/** 계정을 쥐고 있는 상태 — 같은 이메일·플랫폼에 두 번째 계정이 자동으로 나가지 않게 「사용중」 등록을 건너뛴다 */
 const ACTIVE = ['배정', '사용중', '회수중']
 
 export async function buildPlan(
@@ -29,18 +30,29 @@ export async function buildPlan(
     db().from('programs').select('id, name'),
     db().from('accounts').select('id, service, status, kind'),
     emails.length > 0
-      ? db().from('assignments').select('program_id, email, service, service_wish, status, replaced_at').in('email', emails)
+      ? db().from('assignments').select('program_id, email, service, service_wish, status, replaced_at, rent_start').in('email', emails)
       : Promise.resolve({
-          data: [] as Array<{ program_id: string; email: string; service: string | null; service_wish: string; status: string; replaced_at: string | null }>,
+          data: [] as Array<{
+            program_id: string
+            email: string
+            service: string | null
+            service_wish: string
+            status: string
+            replaced_at: string | null
+            rent_start: string | null
+          }>,
         }),
   ])
   const activeKeys = new Set<string>()
   const programEmailKeys = new Set<string>()
+  const returnedKeys = new Set<string>()
   for (const a of existing ?? []) {
     if (ACTIVE.includes(a.status) && a.service) activeKeys.add(`${a.email}|${a.service}`)
     // 0008: 같은 프로그램이라도 플랫폼이 다르면 함께 둘 수 있다 — 플랫폼 = 배정 서비스, 없으면 희망
-    if (PROGRAM_KEY_STATUSES.includes(a.status) && !a.replaced_at)
-      programEmailKeys.add(`${a.program_id}|${a.email}|${a.service ?? a.service_wish}`)
+    const programKey = `${a.program_id}|${a.email}|${a.service ?? a.service_wish}`
+    // 0009: 진행 중 건만 중복으로 본다 — 회수중·회수완료 이력이 있어도 다시 등록할 수 있다(R9, 2026-11-17)
+    if (blocksReapply(a.status) && !a.replaced_at) programEmailKeys.add(programKey)
+    if (a.status === '회수완료') returnedKeys.add(`${programKey}|${a.rent_start ?? ''}`)
   }
   return planImport(rows, {
     mode,
@@ -50,6 +62,7 @@ export async function buildPlan(
     accounts: accounts ?? [],
     activeKeys,
     programEmailKeys,
+    returnedKeys,
   })
 }
 

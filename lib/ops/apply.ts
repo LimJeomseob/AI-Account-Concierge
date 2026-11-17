@@ -4,7 +4,7 @@
 import 'server-only'
 import { db } from '@/lib/db'
 import { todayKST } from '@/lib/date'
-import { applyAvailability } from '@/lib/assign'
+import { applyAvailability, DUPLICATE_BLOCK_STATUSES } from '@/lib/assign'
 import { nextAssignmentId, nextUserId } from '@/lib/ids'
 import { log } from '@/lib/state'
 import type { Program, ServiceWish, UserType } from '@/lib/types'
@@ -26,7 +26,7 @@ export type ApplyResult =
   | { ok: true; id: string; period: string }
   | { ok: false; msg: string }
 
-const ACTIVE = ['신청', '승인', '배정', '사용중', '회수중', '회수완료']
+const DUPLICATE_MSG = '이미 같은 프로그램에 신청해 사용 중이거나 처리 중입니다. 담당자에게 문의해 주세요.'
 
 export async function applyForAccount(input: ApplyInput, today: string = todayKST()): Promise<ApplyResult> {
   // R8: 프로그램 매칭
@@ -46,18 +46,20 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
   if (avail.reason === '시작전') return { ok: false, msg: '아직 접수를 시작하지 않은 프로그램입니다.' }
   if (avail.reason === '완료') return { ok: false, msg: '종료된 프로그램입니다.' }
 
-  // R9: 이메일 소문자 정규화 + 같은 프로그램 활성 중복 거부
-  // (공개 신청은 프로그램당 1회. DB 인덱스는 0008 부터 플랫폼별이라 한 사람이 두 플랫폼 건을 가질 수 있어 limit(1)로 읽는다)
+  // R9: 이메일 소문자 정규화 + 같은 프로그램에 진행 중(신청·승인·배정·사용중) 건이 있으면 거부.
+  // 회수중·회수완료만 남은 사람은 다시 신청할 수 있다(2026-11-17, lib/assign.ts:DUPLICATE_BLOCK_STATUSES).
+  // DB 인덱스는 0008 부터 플랫폼별이라 한 사람이 두 플랫폼 건을 가질 수 있어 limit(1)로 읽는다.
+  // 거부 문구에 접수번호를 싣지 않는다 — 이메일만 아는 제3자가 참여 여부·번호를 알아낼 수 있다(2026-11-17 보안 점검).
   const email = input.email.trim().toLowerCase()
-  const { data: dups } = await db()
+  const { data: dups, error: dupErr } = await db()
     .from('assignments')
     .select('id')
     .eq('program_id', program.id)
     .eq('email', email)
-    .in('status', ACTIVE)
+    .in('status', [...DUPLICATE_BLOCK_STATUSES])
     .limit(1)
-  const dup = dups?.[0]
-  if (dup) return { ok: false, msg: '이미 같은 프로그램에 신청하셨습니다. (접수번호 ' + dup.id + ')' }
+  if (dupErr) return { ok: false, msg: '접수 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.' }
+  if (dups?.[0]) return { ok: false, msg: DUPLICATE_MSG }
 
   // R10: users upsert
   const nowIso = new Date().toISOString()
@@ -115,9 +117,7 @@ export async function applyForAccount(input: ApplyInput, today: string = todayKS
     // 사용 시작일은 배정할 때 정한다(배정일). 종료일은 두지 않는다
   })
   if (aErr) {
-    if (/assignments_active_unique/.test(aErr.message)) {
-      return { ok: false, msg: '이미 같은 프로그램에 신청하셨습니다.' }
-    }
+    if (/assignments_active_unique/.test(aErr.message)) return { ok: false, msg: DUPLICATE_MSG }
     return { ok: false, msg: '접수 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.' }
   }
 

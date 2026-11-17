@@ -39,7 +39,7 @@ Vercel 환경변수 (Production·Preview 모두, 이름 예시는 `.env.example`
 
 ## 초기 구축 (모두 웹 화면에서)
 
-1. **스키마:** Supabase 대시보드 > SQL Editor 에 `supabase/migrations/0001`~`0008` 을 번호 순서대로 붙여 넣어 실행한다(각 파일 멱등).
+1. **스키마:** Supabase 대시보드 > SQL Editor 에 `supabase/migrations/0001`~`0009` 을 번호 순서대로 붙여 넣어 실행한다(각 파일 멱등).
    0002·0003 은 enum 값 추가가 있어, 한 번에 실행해 오류가 나면 파일 안 문장을 위에서부터 나눠 실행한다.
 2. **Google 로그인:** Supabase > Authentication > URL Configuration 의 Site URL 을 `https://ai-account-concierge.vercel.app`,
    Redirect URLs 에 `https://ai-account-concierge.vercel.app/auth/callback` 을 등록한다.

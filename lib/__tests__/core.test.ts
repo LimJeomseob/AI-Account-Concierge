@@ -530,9 +530,11 @@ describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
     expect(planSummary(items)).toBe('전체 6행 · 등록 3 · 건너뜀 2 · 오류 1')
   })
 
-  it('planImport 회수완료: 계정 없어도 되고 종료일 기본값 오늘, 같은 프로그램 이력이 있으면 오류', async () => {
+  it('planImport 회수완료: 계정 없어도 되고 종료일 기본값 오늘, 같은 사용시작 이력이 있으면 오류(R9 2026-11-17)', async () => {
     const { parseUsageCsv, planImport } = await import('@/lib/usage-import')
-    const { rows } = parseUsageCsv('이름,이메일,플랫폼,사용시작\nA,a@x.kr,GPT,2026-09-01\nB,b@x.kr,GPT,')
+    const { rows } = parseUsageCsv(
+      '이름,이메일,플랫폼,사용시작\nA,a@x.kr,GPT,2026-09-01\nB,b@x.kr,GPT,2026-09-01\nC,c@x.kr,GPT,2026-10-01\nD,d@x.kr,GPT,2026-09-01\nD,d@x.kr,GPT,2026-09-01',
+    )
     const items = planImport(rows, {
       mode: '회수완료',
       today: '2026-10-29',
@@ -540,10 +542,60 @@ describe('사용현황 CSV 일괄 등록 (순수 함수)', () => {
       programs: [{ id: 'P1', name: '연구모임(ChatGPT)' }],
       accounts: [],
       activeKeys: new Set(['a@x.kr|GPT']), // 회수완료 등록은 사용중 여부와 무관
-      programEmailKeys: new Set(['P1|b@x.kr|GPT']),
+      programEmailKeys: new Set(['P1|a@x.kr|GPT']), // 지금 사용중이어도 지난 이력은 남길 수 있다
+      returnedKeys: new Set(['P1|b@x.kr|GPT|2026-09-01', 'P1|c@x.kr|GPT|2026-09-01']),
     })
     expect(items[0]).toMatchObject({ action: 'new', accountId: null, start: '2026-09-01', end: '2026-10-29' })
-    expect(items[1].action).toBe('error')
+    expect(items[1].action).toBe('error') // 같은 이력 재업로드
+    expect(items[2].action).toBe('new') // 같은 프로그램의 다른 날짜 사용
+    expect(items.slice(3).map((x) => x.action)).toEqual(['new', 'error']) // 파일 안 중복
+  })
+
+  it('planImport 사용중: 회수완료·회수중 이력만 있으면 다시 등록, 진행 중 건이 있으면 오류(R9 2026-11-17)', async () => {
+    const { parseUsageCsv, planImport } = await import('@/lib/usage-import')
+    const { rows } = parseUsageCsv('이름,이메일,플랫폼\nR,r@x.kr,Claude\nU,u@x.kr,Claude\nW,w@x.kr,Claude')
+    const items = planImport(rows, {
+      mode: '사용중',
+      today: '2026-11-17',
+      defaultProgramId: 'P1',
+      programs: [{ id: 'P1', name: '특강' }],
+      accounts: [{ id: 'CL-001', service: 'Claude', status: '가용', kind: '운영' }],
+      // w 는 회수중(계정을 아직 쥐고 있음) → 두 번째 계정이 자동으로 나가지 않게 건너뜀
+      activeKeys: new Set(['w@x.kr|Claude']),
+      programEmailKeys: new Set(['P1|u@x.kr|Claude']), // u 는 같은 프로그램에 신청 건이 있음
+      returnedKeys: new Set(['P1|r@x.kr|Claude|2026-09-01']), // r 은 회수완료 이력만 있음
+    })
+    expect(items.map((x) => x.action)).toEqual(['new', 'error', 'skip'])
+    expect(items[0].accountId).toBe('CL-001')
+  })
+
+  it('R9 재신청 판정 — 진행 중 상태만 막고 회수중·회수완료는 다시 신청 가능', async () => {
+    const { blocksReapply, DUPLICATE_BLOCK_STATUSES } = await import('@/lib/assign')
+    expect([...DUPLICATE_BLOCK_STATUSES]).toEqual(['신청', '승인', '배정', '사용중'])
+    for (const s of ['신청', '승인', '배정', '사용중']) expect(blocksReapply(s)).toBe(true)
+    for (const s of ['회수중', '회수완료', '취소', '반려', '인수기한초과']) expect(blocksReapply(s)).toBe(false)
+  })
+
+  it('R9 재신청 표시 — 신청·승인 건만, 같은 프로그램 이전 건 수와 회수중 여부, 장애 대체 원 배정 제외', async () => {
+    const { reapplyInfo } = await import('@/lib/assign')
+    const info = reapplyInfo(
+      [
+        { id: 'N1', program_id: 'P1', email: 'a@x.kr', status: '신청' },
+        { id: 'N2', program_id: 'P1', email: 'b@x.kr', status: '승인' },
+        { id: 'N3', program_id: 'P2', email: 'a@x.kr', status: '신청' }, // 다른 프로그램 이력 없음
+        { id: 'N4', program_id: 'P1', email: 'a@x.kr', status: '사용중' }, // 표시 대상 아님
+      ],
+      [
+        { id: 'O1', program_id: 'P1', email: 'A@x.kr', status: '회수완료', replaced_at: null },
+        { id: 'O2', program_id: 'P1', email: 'a@x.kr', status: '회수완료', replaced_at: null },
+        { id: 'O3', program_id: 'P1', email: 'b@x.kr', status: '회수중', replaced_at: null },
+        { id: 'O4', program_id: 'P1', email: 'b@x.kr', status: '회수완료', replaced_at: '2026-10-01T00:00:00Z' },
+      ],
+    )
+    expect(info.get('N1')).toEqual({ prior: 2, returning: false })
+    expect(info.get('N2')).toEqual({ prior: 1, returning: true })
+    expect(info.has('N3')).toBe(false)
+    expect(info.has('N4')).toBe(false)
   })
 
   it('bulkMessage', async () => {
