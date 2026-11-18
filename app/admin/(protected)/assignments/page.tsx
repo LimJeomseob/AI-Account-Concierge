@@ -30,6 +30,11 @@ import AssignExportButton from './AssignExportButton'
 import ApproveAssignButton from './ApproveAssignButton'
 import UsageImport from './UsageImport'
 import { ConfirmSubmit, SelectAll } from './BulkControls'
+import ScrollWindow from './ScrollWindow'
+
+/** 목록에 불러오는 최대 건수(2026-11-18: 500 → 1000)와, 스크롤 창에 한 번에 보이는 건수 */
+const LIST_LIMIT = 1000
+const VISIBLE_ROWS = 30
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +57,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
         'id, name, email, program_id, service_wish, account_id, service, status, applied_at, approved_on, assigned_on, rent_start, rent_end, acknowledged_at, note, chk_delete_chats, chk_team_removed, programs(name)',
       )
       .order('applied_at', { ascending: false })
-      .limit(500),
+      .limit(LIST_LIMIT),
     f,
   )
   // 상태별 건수 — 상태를 뺀 나머지 조건(프로그램·이름·이메일·계정번호)을 그대로 적용
@@ -91,10 +96,13 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
   // 계정의 로그인 이메일(계정명) — 안내문에 쓴다
   const accountIds = [...new Set(list.map((r) => r.account_id).filter((v): v is string => !!v))]
   const loginEmails = new Map<string, string | null>()
-  if (accountIds.length > 0) {
-    const { data: secs } = await db().from('account_secrets').select('account_id, login_email').in('account_id', accountIds)
-    for (const x of secs ?? []) loginEmails.set(x.account_id, x.login_email)
-  }
+  // 목록이 1000건까지라 계정번호가 많을 수 있다 — 100개씩 나눠 조회
+  const secs = (
+    await Promise.all(
+      chunk(accountIds, 100).map((part) => db().from('account_secrets').select('account_id, login_email').in('account_id', part)),
+    )
+  ).flatMap((x) => x.data ?? [])
+  for (const x of secs) loginEmails.set(x.account_id, x.login_email)
 
   const appUrl = APP_URL
   const secretMissing = !hasSecret()
@@ -120,9 +128,9 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
         </div>
         <div className="flex items-center gap-3">
           <p className="text-sm text-slate-500">
-            {hasFilter ? '조건에 맞는' : '전체'} {list.length}건{list.length >= 500 ? ' (최근 500건까지 표시)' : ''}
+            {hasFilter ? '조건에 맞는' : '전체'} {list.length}건{list.length >= LIST_LIMIT ? ` (최근 ${LIST_LIMIT}건까지 표시)` : ''}
           </p>
-          {/* 현재 조회 조건 그대로 내려받는다(화면 표시 500건 제한 없이 최대 5000건) */}
+          {/* 현재 조회 조건 그대로 내려받는다(화면 표시 1000건 제한 없이 최대 5000건) */}
           <a
             href={exportHref}
             className="rounded-md bg-gnu-navy px-3 py-2 text-sm font-semibold text-white hover:bg-gnu-navy-dark"
@@ -316,6 +324,11 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
               return <span className="text-slate-300">-</span>
             }}
           />
+          {list.length > VISIBLE_ROWS && (
+            <p className="text-xs text-slate-500">
+              {VISIBLE_ROWS}건씩 표시 · 창 안에서 스크롤하면 한 건씩 넘어갑니다(전체 {list.length}건). 「전체 선택」과 일괄 처리는 목록 전체에 적용됩니다.
+            </p>
+          )}
           <p className="text-xs text-slate-500">
             「선택 승인 + 배정 + 이메일 내려받기」: 고른 「신청」·「승인」 건을 승인하고 바로 계정을 배정한 뒤 이름·이메일·계정번호 CSV 를
             내려받습니다(가용 계정이 모자라면 「승인」으로 남고 「(대기)」 표시). 회수는 「선택 회수 시작」 → 행의 체크 2개 또는 「선택 회수 완료」.
@@ -409,9 +422,10 @@ function UsageTable({
   manage: (r: UsageRow) => ReactNode
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-gnu-line">
-      <table className="w-full min-w-[960px] border-collapse text-[15px] [&_tbody_tr]:odd:bg-white [&_tbody_tr]:even:bg-slate-50/60 [&_tbody_tr]:hover:bg-gnu-sky/50">
-        <thead className="bg-gnu-sky/60 text-left text-[13px] text-gnu-navy">
+    <ScrollWindow visibleRows={VISIBLE_ROWS}>
+      {/* 한 건씩 맞물려 스크롤(snap-start), 머리글은 창 위에 고정 — 비치지 않게 불투명 배경 */}
+      <table className="w-full min-w-[960px] border-collapse text-[15px] [&_tbody_tr]:snap-start [&_tbody_tr]:odd:bg-white [&_tbody_tr]:even:bg-slate-50 [&_tbody_tr]:hover:bg-gnu-sky/50">
+        <thead className="text-left text-[13px] text-gnu-navy [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-[#f1f9fd]">
           <tr>
             <th className="border-b border-gnu-line px-3 py-2.5">
               <SelectAll />
@@ -472,6 +486,6 @@ function UsageTable({
           )}
         </tbody>
       </table>
-    </div>
+    </ScrollWindow>
   )
 }

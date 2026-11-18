@@ -48,6 +48,7 @@ docs/PRD.md, docs/운영매뉴얼.md, docs/배포체크리스트.md
 | R9 중복 신청 = 진행 중(신청·승인·배정·사용중)만 거부, 회수중·회수완료 뒤 재신청 허용(2026-11-17) | `lib/assign.ts:DUPLICATE_BLOCK_STATUSES / blocksReapply / reapplyInfo`, 인덱스 0009, 사용현황 「재신청」 표시 |
 | R12·R14 배정 = 유료계정 사용현황의 「선택 승인 + 배정 + 이메일 내려받기」·「승인 대기 일괄 배정」만 (자동 배정 폐지 2026-10-29) | `lib/ops/assignments.ts:assignApprovedForExport` → `autoAssignProgram`, `lib/assign.ts:planAllocations`, `app/admin/actions.ts:approveAssignExportAction / assignExportAction`, `lib/ops/export.ts:assignedCsv` |
 | 사용현황 필터(전체·상태·프로그램·플랫폼·이름·이메일·계정번호) | `lib/filter.ts` — 목록·CSV·배정 공통 |
+| 사용현황 목록 창(30건 높이·한 건씩 스크롤·머리글 고정, 최대 1000건, 2026-11-18) | `app/admin/(protected)/assignments/ScrollWindow.tsx`, `page.tsx:LIST_LIMIT / VISIBLE_ROWS` |
 | R14-2 접속 링크 | 폐지(2026-10-29) — 배정 풀은 가용 ∧ 운영 (`availablePool`, `program_availability` 뷰 0006) |
 | R13·R17 승인·취소 (반려 폐지 2026-10-29) | `lib/ops/assignments.ts` |
 | R16 배정안내 메일 | 폐지(2026-10-28) — 내려받은 이메일로 워크스페이스 초대 |
