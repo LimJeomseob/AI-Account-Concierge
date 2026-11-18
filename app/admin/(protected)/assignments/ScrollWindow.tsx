@@ -4,12 +4,12 @@
  * 사용현황 목록 스크롤 창 (2026-11-18)
  * 표를 「머리글 + visibleRows 건」 높이의 창에 넣고, 그 안에서 한 건(행) 단위로 맞물려 스크롤한다.
  * 행 높이가 일정하지 않아(재신청 표시·회수 체크 단추) 실제 높이를 재서 max-height 를 정한다.
- * 창은 화면 높이를 넘지 않는다(SCREEN_CAP) — 화면이 작으면 visibleRows 건보다 적게 보이고 나머지는 스크롤. 모든 행은 DOM 에 그대로 있다(전체 선택·일괄 처리 동작 불변).
+ * 창은 화면 높이의 절반을 넘지 않는다(SCREEN_CAP) — 화면이 작으면 visibleRows 건보다 적게 보이고 나머지는 스크롤. 모든 행은 DOM 에 그대로 있다(전체 선택·일괄 처리 동작 불변).
  */
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 
-/** 창 높이 상한 — 화면 높이에서 위아래 여백을 뺀 값(창 전체가 한 화면에 들어오게) */
-const SCREEN_CAP = 'calc(100dvh - 6rem)'
+/** 창 높이 상한 — 화면 높이의 절반(2026-11-18 운영자 요청). 목록 아래 카드가 같은 화면에 함께 보인다 */
+const SCREEN_CAP = 'calc((100dvh - 6rem) / 2)'
 
 export default function ScrollWindow({ visibleRows = 30, children }: { visibleRows?: number; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)

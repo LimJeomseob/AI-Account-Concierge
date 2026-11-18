@@ -326,7 +326,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Search
           />
           {list.length > VISIBLE_ROWS && (
             <p className="text-xs text-slate-500">
-              한 번에 최대 {VISIBLE_ROWS}건 표시(화면 높이에 맞춤) · 창 안에서 스크롤하면 한 건씩 넘어갑니다(전체 {list.length}건). 「전체 선택」과 일괄 처리는 목록 전체에 적용됩니다.
+              화면 절반 높이의 창(최대 {VISIBLE_ROWS}건) · 창 안에서 스크롤하면 한 건씩 넘어갑니다(전체 {list.length}건). 「전체 선택」과 일괄 처리는 목록 전체에 적용됩니다.
             </p>
           )}
           <p className="text-xs text-slate-500">
