@@ -8,6 +8,8 @@
  * 계정번호 열은 양식에 없다(2026-10-29). 열이 있어도 무시하고, 「사용중」은 업로드 후 가용 계정을 번호 순으로 자동 부여한다(R14).
  * 가용 계정 수와 상관없이 기록은 저장한다 — 가용 계정이 없으면 「사용중」을 계정 없이 저장(회수완료는 원래 계정 없음).
  * 등록 상태는 화면에서 고른다: 「사용중」(계정 배정) 또는 「회수완료」(지난 사용 이력)
+ * 2026-11-18: 프로그램 칸은 느슨하게 찾는다(resolveProgram — 「직원 중급 교육과정」 = 「중급 교육과정」),
+ *   양식 예시 행(홍길동)은 오류, 「사용중」으로 올려도 사용종료가 지난 행은 「회수완료」로 등록한다.
  */
 
 export type ImportMode = '사용중' | '회수완료'
@@ -147,13 +149,94 @@ export function parseUsageCsv(text: string): { rows: ImportRow[]; error?: string
   return { rows }
 }
 
+export interface ProgramRef {
+  id: string
+  name: string
+  /** 대상(교원·직원·학생·지역민·혼합) — 있으면 「직원 중급 교육과정」 같은 접두어 대조에 쓴다 */
+  target?: string | null
+}
+
+export type ProgramMatch =
+  | { program: ProgramRef; loose: boolean }
+  | { program: null; reason: 'none' | 'ambiguous'; similar: ProgramRef[] }
+
+/** 이름 비교용 — 공백·가운뎃점·괄호·하이픈·물결·대소문자 차이를 없앤다 */
+export function normProgram(s: string): string {
+  return s
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[\s·ㆍ・･.,\-_~∼()（）[\]「」]/g, '')
+}
+
+const TARGET_WORDS = ['교원', '직원', '학생', '지역민']
+/** 프로그램 이름 앞에 흔히 붙여 쓰는 대상·분류 낱말 (「직원 중급 교육과정」「직원교육 중급 교육과정」) */
+const PREFIX_WORDS = [...TARGET_WORDS, '재직자', '윤리']
+
+/**
+ * CSV 의 프로그램 칸 → 등록된 프로그램 (2026-11-18)
+ * 번호 → 이름 → 정규화한 이름 → 대상·분류 접두어를 뗀 이름 순서로 찾고, 후보가 하나일 때만 채택한다.
+ * 번호·이름이 글자 그대로 맞지 않으면 loose = true (미리보기 메모에 알린다).
+ */
+export function resolveProgram(input: string, programs: ProgramRef[]): ProgramMatch {
+  const raw = input.trim()
+  const exact =
+    programs.find((p) => p.id.toUpperCase() === raw.toUpperCase()) ??
+    programs.find((p) => p.name.trim().toLowerCase() === raw.toLowerCase())
+  if (exact) return { program: exact, loose: false }
+
+  const key = normProgram(raw)
+  const similar = () =>
+    key.length < 2
+      ? []
+      : programs
+          .filter((p) => {
+            const n = normProgram(p.name)
+            return n.length >= 2 && (n.includes(key) || key.includes(n))
+          })
+          .slice(0, 3)
+  if (!key) return { program: null, reason: 'none', similar: [] }
+
+  const pick = (c: ProgramRef[]): ProgramMatch | null =>
+    c.length === 1 ? { program: c[0], loose: true } : c.length > 1 ? { program: null, reason: 'ambiguous', similar: c.slice(0, 3) } : null
+
+  const byNorm = pick(programs.filter((p) => normProgram(p.name) === key))
+  if (byNorm) return byNorm
+
+  const byPrefix = pick(
+    programs.filter((p) =>
+      PREFIX_WORDS.some((w) => {
+        if (key !== w + normProgram(p.name) && key !== `${w}교육${normProgram(p.name)}`) return false
+        // 대상 낱말이면 그 프로그램의 대상과 맞아야 한다(대상을 모르거나 혼합이면 통과)
+        return !TARGET_WORDS.includes(w) || !p.target || p.target === '혼합' || p.target === w
+      }),
+    ),
+  )
+  if (byPrefix) return byPrefix
+  return { program: null, reason: 'none', similar: similar() }
+}
+
+const quoteNames = (ps: ProgramRef[]) => ps.map((p) => `「${p.name}」`).join(', ')
+
+/** 못 찾은 프로그램의 오류 문구 */
+export function programErrorMsg(input: string, m: Extract<ProgramMatch, { program: null }>): string {
+  if (m.reason === 'ambiguous') return `프로그램 「${input}」 이 여러 프로그램과 겹침 — ${quoteNames(m.similar)} 중 정확한 이름으로 적어 주세요`
+  return m.similar.length > 0
+    ? `프로그램 「${input}」 없음 — 비슷한 이름: ${quoteNames(m.similar)}`
+    : `프로그램 「${input}」 없음 — 등록된 프로그램 이름(안내창 목록)으로 적어 주세요`
+}
+
+/** 양식 예시 행(홍길동 · hong@gnu.ac.kr)을 지우지 않고 올린 경우 */
+export function isExampleRow(r: { name: string; email: string }): boolean {
+  return r.name.trim() === '홍길동' && r.email.trim().toLowerCase() === 'hong@gnu.ac.kr'
+}
+
 export interface PlanContext {
   mode: ImportMode
   today: string
   /** CSV 에 프로그램이 비어 있을 때 쓸 프로그램 번호 */
   defaultProgramId: string | null
   /** 사용종료 기본값은 없다 — CSV 에 적은 값만 쓴다(프로그램 기간 폐지, 2026-11-10) */
-  programs: Array<{ id: string; name: string }>
+  programs: ProgramRef[]
   accounts: Array<{ id: string; service: string; status: string; kind: string }>
   /** 「이메일|플랫폼」 — 이미 배정·사용중·회수중인 조합 */
   activeKeys: Set<string>
@@ -179,14 +262,14 @@ export interface PlanItem {
   accountId: string | null
   start: string | null
   end: string | null
+  /** 이 행이 실제로 등록될 상태 — 「사용중」으로 올려도 사용종료가 지난 행은 「회수완료」(2026-11-18) */
+  mode: ImportMode
   action: 'new' | 'skip' | 'error'
   msg: string
 }
 
 /** 행 → 등록 계획 (계정 자동 선택 포함). DB 를 바꾸지 않는다 */
 export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
-  const byId = new Map(ctx.programs.map((p) => [p.id.toUpperCase(), p]))
-  const byName = new Map(ctx.programs.map((p) => [p.name.trim().toLowerCase(), p]))
   const reserved = new Set<string>()
   const seenActive = new Set<string>()
   const seenProgram = new Set<string>()
@@ -197,9 +280,17 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
       .sort()
 
   return rows.map((r) => {
-    const program = r.program ? byId.get(r.program.toUpperCase()) ?? byName.get(r.program.trim().toLowerCase()) : undefined
+    const found = r.program ? resolveProgram(r.program, ctx.programs) : null
+    const program = found?.program ?? undefined
     const programId = program?.id ?? (r.program ? null : ctx.defaultProgramId)
     const programName = program?.name ?? (r.program || ctx.programs.find((p) => p.id === ctx.defaultProgramId)?.name || '')
+    // 「사용중」으로 올려도 사용종료가 이미 지난 행은 「회수완료」 이력으로 등록한다(2026-11-18 운영자 결정)
+    const mode: ImportMode = ctx.mode === '사용중' && r.end && r.end < ctx.today ? '회수완료' : ctx.mode
+    const notes: string[] = []
+    if (found?.program && found.loose) notes.push(`프로그램 「${r.program}」 → 「${found.program.name}」 로 인식`)
+    if (mode !== ctx.mode) notes.push('사용종료가 지나 「회수완료」 이력으로 등록')
+    else if (mode === '사용중' && r.end === ctx.today) notes.push('사용종료가 오늘 — 일일 작업 때 바로 회수중이 됩니다')
+    const withNotes = (msg: string) => [msg, ...notes].join(' · ')
     const base = {
       line: r.line,
       name: r.name,
@@ -208,12 +299,18 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
       programId,
       programName,
       accountId: null as string | null,
-      start: ctx.mode === '사용중' ? r.start ?? ctx.today : r.start,
-      end: ctx.mode === '회수완료' ? r.end ?? ctx.today : r.end,
+      start: mode === '사용중' ? r.start ?? ctx.today : r.start,
+      end: mode === '회수완료' ? r.end ?? ctx.today : r.end,
+      mode,
     }
     const fail = (msg: string): PlanItem => ({ ...base, action: 'error', msg })
     if (r.errors.length > 0) return fail(r.errors.join(' · '))
-    if (!programId) return fail(r.program ? `프로그램 「${r.program}」 없음` : '프로그램 없음 — 기본 프로그램을 고르거나 CSV 에 적어 주세요')
+    if (isExampleRow(r)) return fail('양식 예시 행(홍길동) — 지우고 올려 주세요')
+    if (!programId) {
+      return fail(
+        found && !found.program ? programErrorMsg(r.program, found) : '프로그램 없음 — 기본 프로그램을 고르거나 CSV 에 적어 주세요',
+      )
+    }
     // 「…(Claude)」「…(ChatGPT)」처럼 플랫폼별 프로그램이면 행의 플랫폼과 맞아야 한다(기본 프로그램 실수 방지)
     const tag = programName.match(/\((ChatGPT|Claude)\)\s*$/)?.[1]
     if (tag && (tag === 'ChatGPT' ? 'GPT' : 'Claude') !== r.service) {
@@ -222,24 +319,28 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
 
     const activeKey = `${r.email}|${r.service}`
     const programKey = `${programId}|${r.email}|${r.service}`
-    if (ctx.mode === '사용중' && (ctx.activeKeys.has(activeKey) || seenActive.has(activeKey))) {
-      return { ...base, action: 'skip', msg: seenActive.has(activeKey) ? '파일 안에서 같은 이메일·플랫폼 중복' : '이미 사용중 — 건너뜀' }
+    if (mode === '사용중' && (ctx.activeKeys.has(activeKey) || seenActive.has(activeKey))) {
+      return {
+        ...base,
+        action: 'skip',
+        msg: withNotes(seenActive.has(activeKey) ? '파일 안에서 같은 이메일·플랫폼 중복' : '이미 사용중 — 건너뜀'),
+      }
     }
     // R9(2026-11-17): 회수중·회수완료 이력이 있어도 같은 프로그램에 다시 등록할 수 있다.
     //  · 사용중: 같은 프로그램·플랫폼에 진행 중 건이 있으면 오류
     //  · 회수완료: 같은 사용시작의 회수완료 이력이 이미 있으면 오류(다른 날짜의 지난 사용은 따로 남길 수 있다)
-    const dupKey = ctx.mode === '회수완료' ? `${programKey}|${base.start ?? ''}` : programKey
-    if (ctx.mode === '사용중' && ctx.programEmailKeys.has(programKey)) {
+    const dupKey = mode === '회수완료' ? `${programKey}|${base.start ?? ''}` : programKey
+    if (mode === '사용중' && ctx.programEmailKeys.has(programKey)) {
       return fail('같은 프로그램·플랫폼에 이 이메일의 진행 중(신청~사용중) 건이 이미 있음(R9)')
     }
-    if (ctx.mode === '회수완료' && ctx.returnedKeys?.has(dupKey)) return fail('같은 사용시작의 회수완료 이력이 이미 있음')
+    if (mode === '회수완료' && ctx.returnedKeys?.has(dupKey)) return fail('같은 사용시작의 회수완료 이력이 이미 있음')
     if (seenProgram.has(dupKey)) return fail('파일 안에서 같은 프로그램·이메일·플랫폼 중복')
 
     // 계정은 CSV 로 받지 않고 업로드 후 자동 부여 — 「사용중」만, 가용·운영 계정을 번호 순으로(R14)
     // 가용 계정이 모자라도 오류로 막지 않고 계정 없이 기록으로 저장한다(2026-10-29 운영자 결정)
     let accountId: string | null = null
     let msg = '회수완료 이력 등록'
-    if (ctx.mode === '사용중') {
+    if (mode === '사용중') {
       accountId = pool(r.service as string).find((id) => !reserved.has(id)) ?? null
       if (accountId) {
         reserved.add(accountId)
@@ -249,8 +350,48 @@ export function planImport(rows: ImportRow[], ctx: PlanContext): PlanItem[] {
 
     seenActive.add(activeKey)
     seenProgram.add(dupKey)
-    return { ...base, accountId, action: 'new', msg }
+    return { ...base, accountId, action: 'new', msg: withNotes(msg) }
   })
+}
+
+/** 가장 많은 오류 사유 한 가지 — 표를 내리지 않아도 원인이 보이게 요약 옆에 붙인다 */
+export function topError(items: PlanItem[]): string | null {
+  const count = new Map<string, number>()
+  for (const x of items) if (x.action === 'error') count.set(x.msg, (count.get(x.msg) ?? 0) + 1)
+  const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0]
+  return top ? `${top[0]} (${top[1]}행)` : null
+}
+
+export interface PrecheckNote {
+  level: 'error' | 'info'
+  text: string
+}
+
+/**
+ * 파일을 고른 직후 브라우저에서 보여 줄 사전 검사 (DB 없음) — 프로그램 이름·예시 행·형식 오류
+ * 계정·중복 검사는 서버 미리보기(planImport)가 한다.
+ */
+export function importPrecheck(text: string, programs: ProgramRef[], today?: string): PrecheckNote[] {
+  if (!text.trim()) return []
+  const parsed = parseUsageCsv(text)
+  if (parsed.error) return [{ level: 'error', text: parsed.error }]
+  const notes: PrecheckNote[] = []
+  const byProgram = new Map<string, number>()
+  for (const r of parsed.rows) if (r.program) byProgram.set(r.program, (byProgram.get(r.program) ?? 0) + 1)
+  for (const [name, n] of byProgram) {
+    const m = resolveProgram(name, programs)
+    if (!m.program) notes.push({ level: 'error', text: `${programErrorMsg(name, m)} (${n}행)` })
+    else if (m.loose) notes.push({ level: 'info', text: `프로그램 「${name}」 → 「${m.program.name}」 로 인식 (${n}행)` })
+  }
+  const examples = parsed.rows.filter(isExampleRow)
+  if (examples.length > 0) notes.push({ level: 'error', text: `${examples[0].line}행은 양식 예시 행(홍길동)입니다 — 지우고 올려 주세요` })
+  const bad = parsed.rows.filter((r) => r.errors.length > 0)
+  if (bad.length > 0) notes.push({ level: 'error', text: `형식 오류 ${bad.length}행 — 예: ${bad[0].line}행 ${bad[0].errors[0]}` })
+  if (today) {
+    const past = parsed.rows.filter((r) => r.end && r.end < today).length
+    if (past > 0) notes.push({ level: 'info', text: `사용종료가 지난 ${past}행은 「사용중」으로 올려도 「회수완료」 이력으로 등록됩니다` })
+  }
+  return notes
 }
 
 /**

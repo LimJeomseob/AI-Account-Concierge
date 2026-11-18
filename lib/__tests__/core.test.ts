@@ -641,3 +641,80 @@ describe('사용현황 CSV — 플랫폼별 중복 기준(0008)·사용종료 �
     expect(items[1]).toMatchObject({ accountId: 'CL-001', end: null })
   })
 })
+
+describe('사용현황 CSV — 프로그램 느슨한 찾기·예시 행·지난 종료일(2026-11-18)', () => {
+  const programs = [
+    { id: 'P26-12', name: '중급 교육과정', target: '직원' },
+    { id: 'P26-13', name: '고급 교육과정', target: '직원' },
+    { id: 'P26-07', name: '중·고급 워크숍 2차', target: '학생' },
+    { id: 'P26-15', name: '중·고급 워크숍(2회~3회)', target: '직원' },
+  ]
+
+  it('resolveProgram: 번호·이름·정규화·대상 접두어 순으로 찾고, 겹치거나 없으면 실패', async () => {
+    const { resolveProgram, programErrorMsg } = await import('@/lib/usage-import')
+    expect(resolveProgram('p26-12', programs)).toMatchObject({ program: { id: 'P26-12' }, loose: false })
+    expect(resolveProgram('중급 교육과정', programs)).toMatchObject({ program: { id: 'P26-12' }, loose: false })
+    expect(resolveProgram('중급교육과정', programs)).toMatchObject({ program: { id: 'P26-12' }, loose: true })
+    expect(resolveProgram('중고급 워크숍 2차', programs)).toMatchObject({ program: { id: 'P26-07' }, loose: true })
+    expect(resolveProgram('직원 중급 교육과정', programs)).toMatchObject({ program: { id: 'P26-12' }, loose: true })
+    expect(resolveProgram('직원교육 고급 교육과정', programs)).toMatchObject({ program: { id: 'P26-13' }, loose: true })
+    // 대상이 다르면 접두어로 인정하지 않는다
+    expect(resolveProgram('학생 중급 교육과정', programs).program).toBeNull()
+    const none = resolveProgram('교육과정', programs)
+    expect(none).toMatchObject({ program: null, reason: 'none' })
+    if (!none.program) expect(programErrorMsg('교육과정', none)).toContain('비슷한 이름: 「중급 교육과정」')
+    // 정규화하면 같은 이름이 둘 → 고르지 않는다
+    const twins = [{ id: 'A', name: '워크숍 1차' }, { id: 'B', name: '워크숍1차' }]
+    expect(resolveProgram('워크숍·1차', twins)).toMatchObject({ program: null, reason: 'ambiguous' })
+  })
+
+  it('첨부 파일 형태: 「직원 중급 교육과정」 인식, 예시 행 오류, 지난 종료일은 회수완료, 파일 안 중복 오류', async () => {
+    const { parseUsageCsv, planImport, topError, importPrecheck } = await import('@/lib/usage-import')
+    const csv = [
+      '이름,이메일,플랫폼,프로그램,사용시작,사용종료',
+      '홍길동,hong@gnu.ac.kr,GPT,직원 중급 교육과정,2026-11-17,2026-11-17',
+      '김서영,ksy@x.kr,GPT,직원 중급 교육과정,2026-11-17,2026-11-17',
+      '이재진,ljj@x.kr,GPT,직원 중급 교육과정,2026-11-17,2026-11-17',
+      '이재진,ljj@x.kr,GPT,직원 중급 교육과정,2026-11-17,2026-11-17',
+      '박오늘,today@x.kr,GPT,직원 중급 교육과정,2026-11-17,2026-11-18',
+      '최진행,ing@x.kr,GPT,직원 중급 교육과정,2026-11-17,',
+    ].join('\n')
+    const { rows } = parseUsageCsv(csv)
+    const items = planImport(rows, {
+      mode: '사용중', today: '2026-11-18', defaultProgramId: null, programs,
+      accounts: [{ id: 'GPT-001', service: 'GPT', status: '가용', kind: '운영' }],
+      activeKeys: new Set(), programEmailKeys: new Set(), returnedKeys: new Set(),
+    })
+    expect(items.map((x) => [x.action, x.mode, x.accountId])).toEqual([
+      ['error', '회수완료', null], // 예시 행
+      ['new', '회수완료', null], // 종료일 지남 → 회수완료, 계정 없음
+      ['new', '회수완료', null],
+      ['error', '회수완료', null], // 파일 안 중복
+      ['new', '사용중', 'GPT-001'], // 종료일이 오늘 → 사용중 + 경고
+      ['new', '사용중', null], // 가용 소진
+    ])
+    expect(items[0].msg).toContain('양식 예시 행')
+    expect(items[1].msg).toContain('「직원 중급 교육과정」 → 「중급 교육과정」')
+    expect(items[1].msg).toContain('회수완료')
+    expect(items[1]).toMatchObject({ programId: 'P26-12', start: '2026-11-17', end: '2026-11-17' })
+    expect(items[4].msg).toContain('사용종료가 오늘')
+    expect(topError(items)).toContain('(1행)')
+
+    const notes = importPrecheck(csv, programs, '2026-11-18')
+    expect(notes.some((n) => n.level === 'info' && n.text.includes('→ 「중급 교육과정」 로 인식 (6행)'))).toBe(true)
+    expect(notes.some((n) => n.level === 'error' && n.text.includes('양식 예시 행'))).toBe(true)
+    expect(notes.some((n) => n.text.includes('사용종료가 지난 4행'))).toBe(true)
+    expect(importPrecheck(csv, [{ id: 'X', name: '다른 프로그램' }])[0]).toMatchObject({ level: 'error' })
+  })
+
+  it('topError: 가장 많은 오류 사유와 행 수', async () => {
+    const { parseUsageCsv, planImport, topError } = await import('@/lib/usage-import')
+    const { rows } = parseUsageCsv('이름,이메일,플랫폼,프로그램\nA,a@x.kr,GPT,없는것\nB,b@x.kr,GPT,없는것')
+    const items = planImport(rows, {
+      mode: '사용중', today: '2026-11-18', defaultProgramId: null, programs, accounts: [],
+      activeKeys: new Set(), programEmailKeys: new Set(),
+    })
+    expect(topError(items)).toBe('프로그램 「없는것」 없음 — 등록된 프로그램 이름(안내창 목록)으로 적어 주세요 (2행)')
+    expect(topError([])).toBeNull()
+  })
+})

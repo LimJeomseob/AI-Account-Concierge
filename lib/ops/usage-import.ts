@@ -6,6 +6,7 @@
  *            가용 계정이 없거나 선점에 실패하면 계정 없이 「사용중」 기록으로 저장한다(가용 계정 수와 무관)
  *            전이가 실패하면 만든 건을 지우고 계정을 되돌린다
  *  · 회수완료: 지난 사용 이력으로 「회수완료」 건만 만든다(계정 상태는 건드리지 않음, 회수 체크 2개 완료 표시)
+ *  · 「사용중」으로 올려도 사용종료가 지난 행은 「회수완료」로 등록한다(PlanItem.mode, 2026-11-18)
  * 로그에는 이메일을 남기지 않는다(R31).
  */
 import 'server-only'
@@ -27,7 +28,7 @@ export async function buildPlan(
 ): Promise<PlanItem[]> {
   const emails = [...new Set(rows.map((r) => r.email).filter(Boolean))]
   const [{ data: programs }, { data: accounts }, { data: existing }] = await Promise.all([
-    db().from('programs').select('id, name'),
+    db().from('programs').select('id, name, target'),
     db().from('accounts').select('id, service, status, kind'),
     emails.length > 0
       ? db().from('assignments').select('program_id, email, service, service_wish, status, replaced_at, rent_start').in('email', emails)
@@ -91,8 +92,10 @@ export async function commitPlan(
     try {
       const userId = await ensureUser(it.name, it.email)
       const id = await nextAssignmentId()
-      const note = `사용현황 CSV 일괄 등록(${today}) — ${mode}`
-      if (mode === '회수완료') {
+      // 행마다 등록 상태가 다를 수 있다 — 「사용중」으로 올려도 사용종료가 지난 행은 「회수완료」(planImport)
+      const rowMode: ImportMode = it.mode ?? mode
+      const note = `사용현황 CSV 일괄 등록(${today}) — ${rowMode}`
+      if (rowMode === '회수완료') {
         const { error } = await db()
           .from('assignments')
           .insert({
@@ -117,7 +120,7 @@ export async function commitPlan(
             note,
           })
         if (error) throw new Error(error.message)
-        await log(actor, 'assignment.import', id, { mode, program: it.programId, service: it.service, account_id: it.accountId })
+        await log(actor, 'assignment.import', id, { mode: rowMode, program: it.programId, service: it.service, account_id: it.accountId })
         done += 1
         continue
       }
@@ -157,7 +160,7 @@ export async function commitPlan(
           rent_end: it.end,
           acknowledged_at: kstMidnight(start),
         },
-        detail: { mode, program: it.programId, account_id: accountId, ...(accountId ? {} : { no_account: true }) },
+        detail: { mode: rowMode, program: it.programId, account_id: accountId, ...(accountId ? {} : { no_account: true }) },
       })
       if (!ok) {
         if (accountId) await releaseClaim({ id: accountId, assignmentId: id, actor, reason: 'import_failed' })

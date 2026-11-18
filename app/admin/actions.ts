@@ -30,7 +30,7 @@ import { importAccounts, parseAccountCsv } from '@/lib/ops/accounts'
 import { approveAssignMessage, assignExportMessage, assignedCsv, bulkMessage, exportQuery, parseFilter } from '@/lib/ops/export'
 import { replaceAccount } from '@/lib/ops/incidents'
 import { buildPlan, commitPlan } from '@/lib/ops/usage-import'
-import { parseUsageCsv, planSummary, type ImportMode, type PlanItem } from '@/lib/usage-import'
+import { parseUsageCsv, planSummary, topError, type ImportMode, type PlanItem } from '@/lib/usage-import'
 import { runDaily } from '@/lib/cron/daily'
 import { runMonthly } from '@/lib/cron/monthly'
 import { sendTestMail } from '@/lib/mail/dispatch'
@@ -148,7 +148,7 @@ export async function usageImportPreviewAction(
     const parsed = parseUsageCsv(text)
     if (parsed.error) return { ok: false, msg: parsed.error }
     const items = await buildPlan(parsed.rows, mode, program)
-    return { ok: true, msg: planSummary(items), items }
+    return { ok: true, msg: [planSummary(items), topError(items)].filter(Boolean).join(' — '), items }
   } catch (e) {
     return { ok: false, msg: (e as Error).message }
   }
@@ -168,7 +168,9 @@ export async function usageImportCommitAction(fd: FormData): Promise<{ ok: boole
     revalidatePath('/admin/dashboard')
     revalidatePath('/admin/users')
     const skipped = items.filter((x) => x.action !== 'new').length
-    const msg = `${mode} ${r.done}건 등록 · 건너뜀/오류 행 ${skipped}건${r.errors.length > 0 ? ` · 등록 실패 ${r.errors.length}건 (${r.errors.slice(0, 3).join(' / ')})` : ''}`
+    // 「사용중」으로 올려도 사용종료가 지난 행은 「회수완료」로 등록된다 — 섞였으면 그 건수를 알린다
+    const moved = mode === '사용중' ? items.filter((x) => x.action === 'new' && x.mode === '회수완료').length : 0
+    const msg = `${mode} ${r.done}건 등록${moved > 0 ? `(그중 사용종료가 지난 ${moved}행은 회수완료)` : ''} · 건너뜀/오류 행 ${skipped}건${r.errors.length > 0 ? ` · 등록 실패 ${r.errors.length}건 (${r.errors.slice(0, 3).join(' / ')})` : ''}`
     return { ok: r.errors.length === 0, msg }
   } catch (e) {
     return { ok: false, msg: (e as Error).message }
